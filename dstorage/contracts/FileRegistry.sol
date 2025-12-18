@@ -4,19 +4,21 @@ pragma solidity ^0.8.20;
 contract FileRegistry {
     struct File {
         address owner;
-        string cid;             // IPFS CID
-        string fileName;        // e.g. "invoice.pdf" (NEW)
-        string fileType;        // e.g. "application/pdf" (NEW)
-        address[] hosts;        // devices storing this file
-        uint256 fileSize;       // Size in bytes (NEW)
+        string cid;             
+        string fileName;        
+        string fileType;        
+        address[] hosts;        
+        uint256 fileSize;       
         uint256 timestamp;
     }
 
     mapping(string => File) private fileMap;
+    
+    // 1. NEW: Store a list of CIDs for every user
+    mapping(address => string[]) private userFiles; 
 
     event FileRegistered(string cid, string fileName, address indexed owner);
 
-    // Updated Register Function
     function registerFile(
         string memory _cid,
         string memory _fileName,
@@ -36,10 +38,24 @@ contract FileRegistry {
             timestamp: block.timestamp
         });
 
+        // 2. NEW: Add this CID to the user's list
+        userFiles[msg.sender].push(_cid);
+
         emit FileRegistered(_cid, _fileName, msg.sender);
     }
 
-    // Helper to get file details
+    // 3. NEW: Get all files for the caller
+    function getMyFiles() external view returns (File[] memory) {
+        string[] memory cids = userFiles[msg.sender];
+        File[] memory files = new File[](cids.length);
+        
+        for (uint i = 0; i < cids.length; i++) {
+            files[i] = fileMap[cids[i]];
+        }
+        return files;
+    }
+
+    // Keep the old helper just in case
     function getFile(string memory _cid)
         external
         view
