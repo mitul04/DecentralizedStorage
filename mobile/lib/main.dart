@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
 import 'screens/home_screen.dart';
 import 'screens/upload_screen.dart';
+import 'screens/files_screen.dart';
 
 void main() {
   runApp(const DecloudApp());
@@ -37,8 +38,8 @@ class _MainLayoutState extends State<MainLayout> {
   
   final List<Widget> _screens = [
   const HomeScreen(),
-  const UploadScreen(), // <--- Replace "const Center(child: Text("Upload"))," with this
-  const Center(child: Text("Files")),
+  const UploadScreen(),
+  const FilesScreen(),
   const Center(child: Text("Profile")),
 ];
 
