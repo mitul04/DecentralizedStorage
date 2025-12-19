@@ -1,154 +1,164 @@
 [
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "cid",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "fileName",
-          "type": "string"
-        },
-        {
-          "indexed": true,
-          "internalType": "address",
-          "name": "owner",
-          "type": "address"
-        }
-      ],
-      "name": "FileRegistered",
-      "type": "event"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "string",
-          "name": "_cid",
-          "type": "string"
-        }
-      ],
-      "name": "getFile",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "owner",
-          "type": "address"
-        },
-        {
-          "internalType": "string",
-          "name": "cid",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "fileName",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "fileType",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "fileSize",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address[]",
-          "name": "hosts",
-          "type": "address[]"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getMyFiles",
-      "outputs": [
-        {
-          "components": [
-            {
-              "internalType": "address",
-              "name": "owner",
-              "type": "address"
-            },
-            {
-              "internalType": "string",
-              "name": "cid",
-              "type": "string"
-            },
-            {
-              "internalType": "string",
-              "name": "fileName",
-              "type": "string"
-            },
-            {
-              "internalType": "string",
-              "name": "fileType",
-              "type": "string"
-            },
-            {
-              "internalType": "address[]",
-              "name": "hosts",
-              "type": "address[]"
-            },
-            {
-              "internalType": "uint256",
-              "name": "fileSize",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "timestamp",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct FileRegistry.File[]",
-          "name": "",
-          "type": "tuple[]"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "string",
-          "name": "_cid",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_fileName",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_fileType",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_fileSize",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address[]",
-          "name": "_hosts",
-          "type": "address[]"
-        }
-      ],
-      "name": "registerFile",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    }
-  ]
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "cid",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "fileName",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "FileRegistered",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_cid",
+        "type": "string"
+      }
+    ],
+    "name": "getFile",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "cid",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "fileName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "fileType",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "fileSize",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address[]",
+        "name": "hosts",
+        "type": "address[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getMyFiles",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "cid",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "fileName",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "fileType",
+            "type": "string"
+          },
+          {
+            "internalType": "address[]",
+            "name": "hosts",
+            "type": "address[]"
+          },
+          {
+            "internalType": "uint256",
+            "name": "fileSize",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "targetReplication",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct FileRegistry.File[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_cid",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_fileName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_fileType",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_fileSize",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address[]",
+        "name": "_hosts",
+        "type": "address[]"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_targetReplication",
+        "type": "uint256"
+      }
+    ],
+    "name": "registerFile",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
