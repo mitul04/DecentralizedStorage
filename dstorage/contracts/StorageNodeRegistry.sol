@@ -26,6 +26,7 @@ contract StorageNodeRegistry is Ownable {
     event NodeRegistered(address indexed nodeAddress, bool isMobile, uint256 capacity);
     event HeartbeatReceived(address indexed nodeAddress, uint256 timestamp);
     event CapacityUpdated(address indexed nodeAddress, uint256 newFreeCapacity);
+    event IPUpdated(address indexed nodeAddress, string newIp);
 
     constructor(address _tokenAddress) Ownable(msg.sender) {
         require(_tokenAddress != address(0), "Invalid token address");
@@ -52,6 +53,14 @@ contract StorageNodeRegistry is Ownable {
 
         nodeList.push(msg.sender);
         emit NodeRegistered(msg.sender, _isMobile, _totalCapacity);
+    }
+
+    // Allows a node to update its IP without re-staking tokens
+    function updateIpAddress(string memory _newIp) external {
+        require(nodes[msg.sender].isRegistered, "Node not registered");
+        nodes[msg.sender].ipAddress = _newIp;
+        nodes[msg.sender].lastHeartbeat = block.timestamp; // Acts as a ping too!
+        emit IPUpdated(msg.sender, _newIp);
     }
 
     // 2. The "I'm Alive" Pulse (Called daily)
