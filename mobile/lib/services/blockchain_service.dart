@@ -33,10 +33,28 @@ class BlockchainService {
 
   // --- CACHE: FILES ---
   Future<void> _cacheFiles(List<Map<String, dynamic>> files) async {
-    final prefs = await SharedPreferences.getInstance();
-    // Convert List<Map> to a JSON String
-    String jsonString = jsonEncode(files); 
-    await prefs.setString('cached_files', jsonString);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // rigorous safety check: Ensure everything is encodable
+      List<Map<String, dynamic>> safeList = files.map((f) {
+        return {
+          'owner': f['owner'].toString(),
+          'cid': f['cid'].toString(),
+          'fileName': f['fileName'].toString(),
+          'fileType': f['fileType'].toString(),
+          'hosts': f['hosts'], // List<String> is safe
+          'fileSize': f['fileSize'].toString(),
+          'timestamp': f['timestamp'].toString(),
+          'targetReplication': f['targetReplication'].toString(),
+        };
+      }).toList();
+
+      String jsonString = jsonEncode(safeList); 
+      await prefs.setString('cached_files', jsonString);
+      print("💾 Files Cached Successfully: ${safeList.length} items");
+    } catch (e) {
+      print("⚠️ Cache Write Failed: $e");
+    }
   }
 
   Future<List<Map<String, dynamic>>> getCachedFiles() async {
@@ -186,13 +204,13 @@ class BlockchainService {
         };
       }).toList();
 
-      _cacheFiles(cleanFiles);
+      await _cacheFiles(cleanFiles);
       
       return cleanFiles;
       
     } catch (e) {
-      print("❌ Error fetching files: $e");
-      return [];
+      print("⚠️ Network unreachable for Files. Loading cache... ($e)");
+      return await getCachedFiles(); // Auto-fallback
     }
   }
 
@@ -233,7 +251,7 @@ class BlockchainService {
       _cacheBalance(val); 
       return val;
     } catch (e) {
-      print("⚠️ Network error, returning cached balance");
+      print("⚠️ Network unreachable for Balance. Using Cache... ($e)");
       return await getCachedBalance();
     }
   }
