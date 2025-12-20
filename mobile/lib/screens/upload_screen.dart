@@ -16,11 +16,17 @@ class _UploadScreenState extends State<UploadScreen> {
   String? _fileName;
   PlatformFile? _pickedFile; 
   bool _isUploading = false;
-  double _replicationValue = 2.0; // Default to 2 copies
+  
+  // Redundancy State
+  double _replicationValue = 1.0; 
 
   // Node Selection State
-  List<Map<String, dynamic>> _nodes = [];
-  Map<String, dynamic>? _selectedNode;
+  List<Map<String, dynamic>> _allNodes = [];
+  
+  // We now store a LIST of selected nodes. 
+  // Index 0 is always the Primary (Uploader).
+  List<Map<String, dynamic>?> _selectedNodes = [null]; 
+  
   bool _isLoadingNodes = true;
 
   @override
@@ -29,21 +35,34 @@ class _UploadScreenState extends State<UploadScreen> {
     _loadNodes();
   }
 
-  // 1. Fetch available nodes from Blockchain
+  // 1. Fetch available nodes
   Future<void> _loadNodes() async {
     await _service.init();
     final nodes = await _service.getAvailableNodes();
     
     if (mounted) {
       setState(() {
-        _nodes = nodes;
+        _allNodes = nodes;
         _isLoadingNodes = false;
-        // Auto-select the first node if available
-        if (nodes.isNotEmpty) {
-          _selectedNode = nodes[0];
-        }
       });
     }
+  }
+
+  // 2. Handle Slider Changes
+  void _updateSlots(int count) {
+    setState(() {
+      _replicationValue = count.toDouble();
+      
+      // Resize the list while keeping existing selections
+      if (count > _selectedNodes.length) {
+        // Add null slots
+        int diff = count - _selectedNodes.length;
+        _selectedNodes.addAll(List.filled(diff, null));
+      } else {
+        // Trim the list
+        _selectedNodes = _selectedNodes.sublist(0, count);
+      }
+    });
   }
 
   Future<void> _pickFile() async {
@@ -57,17 +76,33 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _uploadFile() async {
-    if (_pickedFile == null || _selectedNode == null) return;
+    // Validation: Check if all slots are filled
+    if (_pickedFile == null || _selectedNodes.contains(null)) {
+       ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("⚠️ Please select a node for every slot.")),
+        );
+      return;
+    }
+
+    // Validation: Check for duplicates (Optional, but good for demo)
+    final addresses = _selectedNodes.map((n) => n!['address']).toSet();
+    if (addresses.length != _selectedNodes.length) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("⚠️ You cannot select the same node twice!")),
+        );
+        return;
+    }
 
     setState(() => _isUploading = true);
 
     try {
-      // 2. Construct the specific URL based on User Choice
-      final targetIp = _selectedNode!['ip'];
-      final targetAddress = _selectedNode!['address'];
+      // A. Upload to PRIMARY Node (Index 0) - This MUST be the real one
+      final primaryNode = _selectedNodes[0]!;
+      final targetIp = primaryNode['ip'];
       final targetUrl = "$targetIp/upload";
       
-      // 3. Upload to THAT specific node
+      print("🚀 Uploading to Primary: $targetUrl");
+
       String? cid = await _service.uploadFileToSpecificNode(
         _pickedFile!.path!, 
         _pickedFile!.name,
@@ -75,38 +110,36 @@ class _UploadScreenState extends State<UploadScreen> {
       );
 
       if (cid != null) {
-        // 4. Save to Blockchain (The Protocol handles replication later)
+        // B. Prepare List of ALL Hosts
+        // We cast the nullable list to a non-nullable list of addresses
+        List<String> allHostAddresses = _selectedNodes.map((n) => n!['address'].toString()).toList();
+
+        // C. Save to Blockchain
         await _service.storeFileOnChain(
           _pickedFile!.name, 
           cid, 
           _pickedFile!.size,
           _replicationValue.toInt(),
-          targetAddress
+          allHostAddresses // Pass the list of user-selected addresses
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("✅ Success! File Distributed."),
-              backgroundColor: Colors.green,
-            ),
+            const SnackBar(content: Text("✅ File Distributed Successfully!"), backgroundColor: Colors.green),
           );
-          // Reset UI
+          // Reset
           setState(() {
             _pickedFile = null;
             _fileName = null;
           });
         }
       } else {
-        throw Exception("Upload failed (Node rejected connection)");
+        throw Exception("Primary Node rejected connection. Is it online?");
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("❌ Error: $e"),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text("❌ Error: $e"), backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -116,158 +149,139 @@ class _UploadScreenState extends State<UploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Upload File", 
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const Text("Select a node to host your data", 
-              style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 20),
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Upload File", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const Text("Manually configure your network topology", style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 20),
 
-          // --- 1. NODE SELECTOR DROPDOWN ---
-          const Text("Storage Node", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
-          const SizedBox(height: 8),
-          _isLoadingNodes
-              ? const LinearProgressIndicator(color: Color(0xFF6C63FF))
-              : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(12),
+            // --- 1. REDUNDANCY SLIDER ---
+            const Text("1. Redundancy Level", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
+            Row(
+              children: [
+                const Icon(Icons.copy_all, color: Colors.grey),
+                Expanded(
+                  child: Slider(
+                    value: _replicationValue,
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    activeColor: const Color(0xFF6C63FF),
+                    label: "${_replicationValue.toInt()} Nodes",
+                    onChanged: (value) => _updateSlots(value.toInt()),
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<Map<String, dynamic>>(
-                      value: _selectedNode,
-                      isExpanded: true,
-                      hint: const Text("Select a Node"),
-                      items: _nodes.map((node) {
-                        return DropdownMenuItem<Map<String, dynamic>>(
-                          value: node,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.dns, size: 16, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text("Node ${node['address'].substring(0,6)}..."),
-                              const Spacer(),
-                              // Show "Reputation" or "IP"
-                              Text(
-                                "Rep: ${node['reputation']}", 
-                                style: TextStyle(fontSize: 12, color: Colors.green[700], fontWeight: FontWeight.bold)
-                              ),
-                            ],
+                ),
+                Text("${_replicationValue.toInt()} Nodes", style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // --- 2. DYNAMIC NODE SELECTORS ---
+            const Text("2. Select Storage Nodes", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
+            const SizedBox(height: 10),
+            
+            if (_isLoadingNodes) 
+              const LinearProgressIndicator(color: Color(0xFF6C63FF))
+            else 
+              ...List.generate(_selectedNodes.length, (index) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 15.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Label
+                      Text(
+                        index == 0 ? "Node 1 (Primary Uploader)" : "Node ${index + 1} (Replica)", 
+                        style: TextStyle(
+                          fontSize: 12, 
+                          fontWeight: FontWeight.bold,
+                          color: index == 0 ? Colors.black87 : Colors.grey
+                        )
+                      ),
+                      const SizedBox(height: 5),
+                      
+                      // Dropdown
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(12),
+                          color: index == 0 ? const Color(0xFFF5F5FF) : Colors.white, // Highlight Primary
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<Map<String, dynamic>>(
+                            value: _selectedNodes[index],
+                            isExpanded: true,
+                            hint: const Text("Select Node"),
+                            items: _allNodes.map((node) {
+                              return DropdownMenuItem<Map<String, dynamic>>(
+                                value: node,
+                                child: Text(
+                                  "Node ${node['address'].substring(0,6)}... (Rep: ${node['reputation']})",
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedNodes[index] = value;
+                              });
+                            },
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() => _selectedNode = value);
-                      },
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
+                );
+              }),
+
+            const SizedBox(height: 20),
+
+            // --- 3. FILE PICKER ---
+            GestureDetector(
+              onTap: _pickFile,
+              child: Container(
+                width: double.infinity,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6C63FF).withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF6C63FF), width: 2),
                 ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_fileName == null ? Icons.cloud_upload_outlined : Icons.check_circle, size: 40, color: const Color(0xFF6C63FF)),
+                    const SizedBox(height: 10),
+                    Text(_fileName ?? "Tap to select file", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
 
-          const SizedBox(height: 20),
-
-          // --- 2. FILE PICKER AREA ---
-          GestureDetector(
-            onTap: _pickFile,
-            child: Container(
+            // --- 4. UPLOAD BUTTON ---
+            SizedBox(
               width: double.infinity,
-              height: 180,
-              decoration: BoxDecoration(
-                color: const Color(0xFF6C63FF).withOpacity(0.05),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFF6C63FF),
-                  width: 2,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _fileName == null ? Icons.cloud_upload_outlined : Icons.check_circle,
-                    size: 50,
-                    color: const Color(0xFF6C63FF),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _fileName ?? "Tap to select a file",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: _fileName == null ? Colors.grey[600] : Colors.black87,
-                    ),
-                  ),
-                  if (_pickedFile != null)
-                    Text(
-                      "${(_pickedFile!.size / 1024).toStringAsFixed(1)} KB",
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                ],
+              height: 50,
+              child: ElevatedButton(
+                // Only enable if File is picked AND all Node Slots are filled
+                onPressed: (_fileName != null && !_isUploading && !_selectedNodes.contains(null)) 
+                    ? _uploadFile 
+                    : null,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
+                child: _isUploading 
+                  ? const CircularProgressIndicator(color: Colors.white) 
+                  : const Text("Confirm & Upload", style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-          ),
-
-          const Spacer(),
-
-          // --- NEW: REPLICATION SLIDER ---
-          const SizedBox(height: 20),
-          const Text("Redundancy Level", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
-          Row(
-            children: [
-              const Icon(Icons.copy_all, color: Colors.grey),
-              Expanded(
-                child: Slider(
-                  value: _replicationValue,
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  activeColor: const Color(0xFF6C63FF),
-                  label: "${_replicationValue.toInt()} Nodes",
-                  onChanged: (value) {
-                    setState(() => _replicationValue = value);
-                  },
-                ),
-              ),
-              Text(
-                "${_replicationValue.toInt()} Copies", 
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // --- 3. UPLOAD BUTTON ---
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton(
-              onPressed: (_fileName != null && !_isUploading && _selectedNode != null) 
-                  ? _uploadFile 
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                elevation: 0,
-              ),
-              child: _isUploading
-                  ? const SizedBox(
-                      height: 20, 
-                      width: 20, 
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                    )
-                  : const Text("Secure Upload", 
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
+          ],
+        ),
       ),
     );
   }

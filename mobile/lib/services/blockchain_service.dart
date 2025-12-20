@@ -154,11 +154,16 @@ class BlockchainService {
   }
 
   // --- WRITE: Register on Blockchain ---
-  Future<void> storeFileOnChain(String fileName, String cid, int fileSize, int replication, String firstHostAddress) async {
+  Future<void> storeFileOnChain(String fileName, String cid, int fileSize, int replication, List<String> hostAddresses) async {
     try {
-      print("🔗 Writing to Blockchain (Host: $firstHostAddress)...");
+      print("🔗 Writing to Blockchain...");
+      print("   - Hosts: $hostAddresses");
+
       final function = _fileContract.function('registerFile'); 
       
+      // Convert String addresses to EthereumAddress objects
+      List<EthereumAddress> ethAddresses = hostAddresses.map((a) => EthereumAddress.fromHex(a)).toList();
+
       await _client.sendTransaction(
         _credentials,
         Transaction.callContract(
@@ -169,7 +174,7 @@ class BlockchainService {
             fileName, 
             "unknown", 
             BigInt.from(fileSize), 
-            [EthereumAddress.fromHex(firstHostAddress)],
+            ethAddresses, // <--- PASSING THE FULL LIST HERE
             BigInt.from(replication)
           ],
         ),
