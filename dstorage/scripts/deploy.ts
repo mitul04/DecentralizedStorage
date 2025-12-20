@@ -55,6 +55,7 @@ async function main() {
 
   // --- 5. SAVE FOR BACKEND (Daemon) ---
   const backendAddresses = {
+    serverIp: serverIp,
     rewardToken: tokenAddress,
     storageNodeRegistry: nodeRegistryAddress,
     fileRegistry: fileRegistryAddress,
