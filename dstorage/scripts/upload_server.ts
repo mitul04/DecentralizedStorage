@@ -42,6 +42,7 @@ app.post("/upload", upload.single("file"), async (req: any, res: any) => {
   } catch (error) {
     console.error("❌ Upload Error:", error);
     res.status(500).send("Upload failed");
+    console.log(`Is IPFS Desktop running?`);
   }
 });
 
@@ -49,4 +50,5 @@ app.post("/upload", upload.single("file"), async (req: any, res: any) => {
 const PORT = 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Upload Server running on http://0.0.0.0:${PORT}`);
+  console.log(`Ensure IPFS Desktop is running locally! (run ipfs daemon)`);
 });
