@@ -64,3 +64,6 @@ ios/Flutter/flutter_export_environment.sh
 
 #Metadata
 .metadata
+
+# Registry addresses
+assets/app_config.json
