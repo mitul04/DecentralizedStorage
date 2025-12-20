@@ -1,14 +1,14 @@
 import 'dart:convert';
-import 'dart:math';
+// import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 class BlockchainService {
-  // 1. GATEWAY IP: Still needed so the phone can reach the Blockchain (RPC)
-  // Run `ipconfig` to verify this hasn't changed!
-  static const String _baseIp = "192.168.43.118"; 
-  final String _rpcUrl = "http://$_baseIp:9545"; 
+  // 1. DYNAMIC CONFIG VARIABLES (Loaded from assets/app_config.json)
+  late String _rpcUrl;
+  late String _fileAddr;
+  late String _nodeAddr;
 
   // 2. IDENTITY: The 'User' Account
   final String _privateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
@@ -17,8 +17,8 @@ class BlockchainService {
   late Credentials _credentials;
   late EthereumAddress _ownAddress;
   
-  late DeployedContract _fileContract; // The App Logic
-  late DeployedContract _nodeContract; // The "Phonebook" of Nodes
+  late DeployedContract _fileContract; 
+  late DeployedContract _nodeContract; 
 
   // --- CACHE: BALANCE ---
   Future<void> _cacheBalance(String balance) async {
@@ -35,14 +35,13 @@ class BlockchainService {
   Future<void> _cacheFiles(List<Map<String, dynamic>> files) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // rigorous safety check: Ensure everything is encodable
       List<Map<String, dynamic>> safeList = files.map((f) {
         return {
           'owner': f['owner'].toString(),
           'cid': f['cid'].toString(),
           'fileName': f['fileName'].toString(),
           'fileType': f['fileType'].toString(),
-          'hosts': f['hosts'], // List<String> is safe
+          'hosts': f['hosts'],
           'fileSize': f['fileSize'].toString(),
           'timestamp': f['timestamp'].toString(),
           'targetReplication': f['targetReplication'].toString(),
@@ -71,110 +70,50 @@ class BlockchainService {
     }
   }
 
+  // --- INIT: LOAD CONFIG & CONNECT ---
   Future<void> init() async {
-    _client = Web3Client(_rpcUrl, http.Client());
-    _credentials = EthPrivateKey.fromHex(_privateKey);
-    _ownAddress = await _credentials.extractAddress();
-    print("📱 Wallet Connected: $_ownAddress");
-    
-    await _loadContracts();
+    try {
+      // 1. Load the Auto-Generated Config
+      // This file was created by your 'deploy.ts' script!
+      final String configString = await rootBundle.loadString('assets/app_config.json');
+      final Map<String, dynamic> config = jsonDecode(configString);
+
+      // 2. Set Variables dynamically
+      _rpcUrl = config['rpcUrl'];
+      _fileAddr = config['fileRegistry'];
+      _nodeAddr = config['nodeRegistry'];
+
+      print("⚙️  Dynamic Config Loaded: RPC=$_rpcUrl");
+
+      // 3. Connect Web3
+      _client = Web3Client(_rpcUrl, http.Client());
+      _credentials = EthPrivateKey.fromHex(_privateKey);
+      _ownAddress = await _credentials.extractAddress();
+      print("📱 Wallet Connected: $_ownAddress");
+      
+      await _loadContracts();
+
+    } catch (e) {
+      print("❌ CRITICAL INIT ERROR: Could not load config.");
+      print("👉 Make sure you ran 'npx hardhat run scripts/deploy.ts'!");
+      print("Error details: $e");
+    }
   }
 
   Future<void> _loadContracts() async {
     // --- CONTRACT 1: FILE REGISTRY ---
     String fileAbi = await rootBundle.loadString("assets/abi.json");
-    
-    // ⚠️ UPDATE ME: Check your deploy logs for "FileRegistry deployed to"
-    String fileAddr = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"; 
-
     _fileContract = DeployedContract(
       ContractAbi.fromJson(fileAbi, "FileRegistry"),
-      EthereumAddress.fromHex(fileAddr),
+      EthereumAddress.fromHex(_fileAddr), // Use dynamic address
     );
 
-    // --- CONTRACT 2: NODE REGISTRY (NEW) ---
+    // --- CONTRACT 2: NODE REGISTRY ---
     String nodeAbi = await rootBundle.loadString("assets/node_registry_abi.json");
-    
-    // ⚠️ UPDATE ME: Check your deploy logs for "StorageNodeRegistry deployed to"
-    // (Ensure this is DIFFERENT from the fileAddr above)
-    String nodeAddr = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; 
-
     _nodeContract = DeployedContract(
       ContractAbi.fromJson(nodeAbi, "StorageNodeRegistry"),
-      EthereumAddress.fromHex(nodeAddr),
+      EthereumAddress.fromHex(_nodeAddr), // Use dynamic address
     );
-  }
-
-  // --- 🕵️‍♂️ DISCOVERY: The Decentralized "Google Search" ---
-  Future<String?> findBestNode() async {
-    try {
-      print("🔍 Searching for active storage nodes...");
-      final function = _nodeContract.function('getAllNodes');
-      
-      final result = await _client.call(
-        contract: _nodeContract,
-        function: function,
-        params: [],
-      );
-
-      List<dynamic> nodeAddresses = result[0];
-      if (nodeAddresses.isEmpty) {
-        print("❌ No nodes registered on blockchain!");
-        return null;
-      }
-
-      // Load Balancing: Pick a random node from the list
-      final randomAddress = nodeAddresses[Random().nextInt(nodeAddresses.length)];
-      
-      // Get that node's profile (Index 0 is the IP string)
-      final profileFunc = _nodeContract.function('nodes');
-      final profileResult = await _client.call(
-        contract: _nodeContract,
-        function: profileFunc,
-        params: [randomAddress],
-      );
-
-      String ipAddress = profileResult[0]; // This comes from Daemon "192.168..."
-      
-      print("✅ Found Node: $ipAddress");
-      return "$ipAddress/upload"; // Construct the API endpoint
-
-    } catch (e) {
-      print("❌ Discovery Error: $e");
-      return null;
-    }
-  }
-
-  // --- UPLOAD: Now uses Dynamic Discovery ---
-  Future<String?> uploadFileToStorage(String filePath, String fileName) async {
-    try {
-      // 1. Ask Blockchain: "Where should I put this?"
-      final nodeUrl = await findBestNode();
-      
-      if (nodeUrl == null) {
-        print("❌ No available nodes found.");
-        return null;
-      }
-
-      // 2. Upload to the discovered URL
-      var request = http.MultipartRequest('POST', Uri.parse(nodeUrl));
-      request.files.add(await http.MultipartFile.fromPath('file', filePath, filename: fileName));
-
-      print("📤 Uploading $fileName to $nodeUrl...");
-      var response = await request.send();
-
-      if (response.statusCode == 200) {
-        var cid = await response.stream.bytesToString();
-        print("✅ Storage Success! CID: $cid");
-        return cid;
-      } else {
-        print("❌ Storage Failed: ${response.statusCode}");
-        return null;
-      }
-    } catch (e) {
-      print("❌ Error uploading: $e");
-      return null;
-    }
   }
 
   // --- READ: Fetch Files ---
