@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/blockchain_service.dart';
+import '../services/encryption_service.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -28,6 +30,10 @@ class _UploadScreenState extends State<UploadScreen> {
   List<Map<String, dynamic>?> _selectedNodes = [null]; 
   
   bool _isLoadingNodes = true;
+
+  // State for Encryption
+  bool _encryptEnabled = false;
+  final EncryptionService _encryptionService = EncryptionService();
 
   @override
   void initState() {
@@ -76,7 +82,7 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _uploadFile() async {
-    // Validation: Check if all slots are filled
+    // 1. Validation
     if (_pickedFile == null || _selectedNodes.contains(null)) {
        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("⚠️ Please select a node for every slot.")),
@@ -84,7 +90,6 @@ class _UploadScreenState extends State<UploadScreen> {
       return;
     }
 
-    // Validation: Check for duplicates (Optional, but good for demo)
     final addresses = _selectedNodes.map((n) => n!['address']).toSet();
     if (addresses.length != _selectedNodes.length) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,38 +101,77 @@ class _UploadScreenState extends State<UploadScreen> {
     setState(() => _isUploading = true);
 
     try {
-      // A. Upload to PRIMARY Node (Index 0) - This MUST be the real one
+      // Setup default variables (assume unencrypted initially)
+      String uploadFilePath = _pickedFile!.path!;
+      String finalFileName = _pickedFile!.name;
+      int finalFileSize = _pickedFile!.size;
+      String? generatedKey;
+      String? generatedIV;
+
+      // 🔒 2. ENCRYPTION BLOCK
+      if (_encryptEnabled) {
+        print("🔐 Encryption Enabled: Scrambling file...");
+        
+        // A. Generate Key
+        generatedKey = _encryptionService.generateRandomKey();
+
+        // B. Encrypt File
+        // This returns the path to the temporary encrypted .aes file
+        final result = await _encryptionService.encryptFile(
+          File(_pickedFile!.path!), 
+          generatedKey
+        );
+
+        // C. Update variables to point to the ENCRYPTED file
+        uploadFilePath = result['path'];
+        generatedIV = result['iv'];
+        
+        // Rename file so we know it's encrypted (e.g., photo.jpg.enc)
+        finalFileName = "${_pickedFile!.name}.enc"; 
+        
+        // Update size (Encrypted file is usually slightly larger due to padding/IV)
+        finalFileSize = await File(uploadFilePath).length();
+      }
+
+      // 3. Upload to PRIMARY Node
       final primaryNode = _selectedNodes[0]!;
       final targetIp = primaryNode['ip'];
       final targetUrl = "$targetIp/upload";
       
       print("🚀 Uploading to Primary: $targetUrl");
 
+      // We upload 'uploadFilePath' (which might be the temp .aes file now)
       String? cid = await _service.uploadFileToSpecificNode(
-        _pickedFile!.path!, 
-        _pickedFile!.name,
+        uploadFilePath, 
+        finalFileName,
         targetUrl
       );
 
       if (cid != null) {
-        // B. Prepare List of ALL Hosts
-        // We cast the nullable list to a non-nullable list of addresses
+        // 🔒 4. SAVE KEY LOCALLY
+        if (_encryptEnabled && generatedKey != null && generatedIV != null) {
+          await _encryptionService.saveKeyForCid(cid, generatedKey, generatedIV);
+          print("🔑 Decryption key saved locally for CID: $cid");
+        }
+
+        // 5. Register on Blockchain
         List<String> allHostAddresses = _selectedNodes.map((n) => n!['address'].toString()).toList();
 
-        // C. Save to Blockchain
         await _service.storeFileOnChain(
-          _pickedFile!.name, 
+          finalFileName, // Blockchain sees "file.txt.enc"
           cid, 
-          _pickedFile!.size,
+          finalFileSize, // Blockchain sees encrypted size
           _replicationValue.toInt(),
-          allHostAddresses // Pass the list of user-selected addresses
+          allHostAddresses
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("✅ File Distributed Successfully!"), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text(_encryptEnabled ? "✅ File Encrypted & Distributed!" : "✅ File Distributed!"), 
+              backgroundColor: Colors.green
+            ),
           );
-          // Reset
           setState(() {
             _pickedFile = null;
             _fileName = null;
@@ -265,7 +309,27 @@ class _UploadScreenState extends State<UploadScreen> {
             
             const SizedBox(height: 20),
 
-            // --- 4. UPLOAD BUTTON ---
+            // --- 4. NEW: ENCRYPTION TOGGLE ---
+            Container(
+              decoration: BoxDecoration(
+                color: _encryptEnabled ? Colors.green.withOpacity(0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: _encryptEnabled ? Border.all(color: Colors.green.withOpacity(0.5)) : Border.all(color: Colors.grey.shade300),
+              ),
+              child: SwitchListTile(
+                title: const Text("Client-Side Encryption", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text("Encrypt data before it leaves this device.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                activeColor: Colors.green,
+                secondary: Icon(_encryptEnabled ? Icons.lock : Icons.lock_open_outlined, color: _encryptEnabled ? Colors.green : Colors.grey),
+                value: _encryptEnabled,
+                onChanged: (val) {
+                  setState(() => _encryptEnabled = val);
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // --- 5. UPLOAD BUTTON ---
             SizedBox(
               width: double.infinity,
               height: 50,
