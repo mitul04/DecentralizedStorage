@@ -10,8 +10,11 @@ async function main() {
   const { ethers } = conn as any;
   const allSigners = await ethers.getSigners();
   
-  // Separate the "Boss" (Account 0) from the "Ghosts" (Accounts 1-19)
-  const [deployer, ...ghosts] = allSigners;
+  // --- CHANGE 1: Explicitly separate the Mobile User (Account 1) ---
+  // 0 = Boss (Deployer)
+  // 1 = Mobile User (You)
+  // 2+ = Ghosts
+  const [deployer, mobileUser, ...ghosts] = allSigners;
 
   // 2. Load Addresses
   const deployPath = path.join(process.cwd(), "deployed-addresses.json");
@@ -22,13 +25,25 @@ async function main() {
   const token = await ethers.getContractAt("RewardToken", addresses.rewardToken, deployer);
   const registry = await ethers.getContractAt("StorageNodeRegistry", addresses.storageNodeRegistry, deployer);
 
+  // --- CHANGE 2: Fund the Mobile User ---
+  const starterBalance = ethers.parseEther("1250.0"); // 1,250 DEC
+  console.log(`🎁 Airdropping ${ethers.formatEther(starterBalance)} DEC to Mobile User (${mobileUser.address.slice(0,6)})...`);
+  
+  try {
+      const tx = await token.transfer(mobileUser.address, starterBalance);
+      await tx.wait();
+      console.log("   ✅ Transferred!");
+  } catch (e) {
+      console.log(`   ⚠️ Transfer failed (maybe already done): ${e}`);
+  }
+
   const stakeAmount = await registry.stakeAmount(); // 500 STOR
 
   console.log(`\n💰 Distributing Stimulus Packages (Funding ${ghosts.length} nodes)...`);
 
   console.log(`\n👑 REGISTERING "THE BOSS" (Your Real Laptop)...`);
 
-  // --- STEP 4: REGISTER THE REAL LAPTOP (Node #1) ---
+  // --- STEP 4: REGISTER THE REAL LAPTOP (Node #0) ---
 
   const realIp = `http://${addresses.serverIp}:3000`;
   const realCapacity = BigInt(500) * BigInt(1024 ** 3); // 500 GB
@@ -52,7 +67,7 @@ async function main() {
     console.log(`   ❌ Failed to register Boss: ${e}`);
   }
 
-  console.log(`\n👻 RELEASING THE GHOSTS (Populating Accounts 1-${ghosts.length})...`);
+  console.log(`\n👻 RELEASING THE GHOSTS (Populating Accounts 2-${ghosts.length + 2})...`);
 
   // 4. The "Ghost" Loop
   for (let i = 0; i < ghosts.length; i++) {
@@ -64,23 +79,21 @@ async function main() {
     const randomGB = Math.floor(Math.random() * (1000 - 100 + 1) + 100);
     const capacityBytes = BigInt(randomGB) * BigInt(1024 ** 3);
 
-    console.log(`   [Node ${i + 1}] Processing ${ghost.address.slice(0, 6)}...`);
+    process.stdout.write(`   [Node ${i + 1}] Processing ${ghost.address.slice(0, 6)}... `);
 
     try {
       // A. Check if already registered
       const profile = await registry.nodes(ghost.address);
       if (profile.isRegistered) {
-        console.log(`      ⚠️ Already registered. Skipping.`);
+        console.log(`Skipping (Already registered)`);
         continue;
       }
 
       // B. FUND THE GHOST (Transfer 500 STOR from Deployer -> Ghost)
-      // Note: We check balance first to save gas, though on localhost gas is free.
       const ghostBalance = await token.balanceOf(ghost.address);
       if (ghostBalance < stakeAmount) {
           const fundTx = await token.transfer(ghost.address, stakeAmount);
           await fundTx.wait();
-          console.log("      💸 Funded 500 STOR");
       }
 
       // C. SWITCH IDENTITY (Connect contract as the Ghost)
@@ -95,10 +108,10 @@ async function main() {
       const regTx = await registryAsGhost.registerNode(ghostIp, capacityBytes, isMobile);
       await regTx.wait();
       
-      console.log(`      ✅ Registered: ${randomGB}GB | Mobile: ${isMobile}`);
+      console.log(`✅ ${randomGB}GB`);
 
     } catch (err) {
-      console.error(`      ❌ Failed: ${err}`);
+      console.error(`❌ Failed: ${err}`);
     }
   }
 
