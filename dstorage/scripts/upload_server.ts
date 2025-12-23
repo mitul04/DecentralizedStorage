@@ -46,7 +46,32 @@ app.post("/upload", upload.single("file"), async (req: any, res: any) => {
   }
 });
 
-// 5. Start Server on 0.0.0.0 (Crucial for Mobile Access)
+// 5. The retireval Route
+app.get("/retrieve/:cid", async (req: any, res: any) => {
+  try {
+    const { cid } = req.params;
+    console.log(`📤 Serving file request: ${cid}`);
+
+    // 1. Create a stream from IPFS
+    const stream = ipfs.cat(cid);
+    
+    // 2. Pipe the stream directly to the response
+    // This allows the mobile to download chunk-by-chunk without loading 
+    // the whole file into server RAM.
+    for await (const chunk of stream) {
+      res.write(chunk);
+    }
+    
+    res.end();
+    console.log(`✅ File served successfully.`);
+
+  } catch (error) {
+    console.error("❌ Retrieval Error:", error);
+    res.status(404).send("File not found on IPFS Node.");
+  }
+});
+
+// 6. Start Server on 0.0.0.0 (Crucial for Mobile Access)
 const PORT = 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Upload Server running on http://0.0.0.0:${PORT}`);
