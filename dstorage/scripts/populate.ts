@@ -67,7 +67,7 @@ async function main() {
     console.log(`   ❌ Failed to register Boss: ${e}`);
   }
 
-  console.log(`\n👻 RELEASING THE GHOSTS (Populating Accounts 2-${ghosts.length + 2})...`);
+  console.log(`\n👻 RELEASING THE GHOSTS (Populating Accounts #2-#${ghosts.length + 1})...`);
 
   // 4. The "Ghost" Loop
   for (let i = 0; i < ghosts.length; i++) {
@@ -79,7 +79,7 @@ async function main() {
     const randomGB = Math.floor(Math.random() * (1000 - 100 + 1) + 100);
     const capacityBytes = BigInt(randomGB) * BigInt(1024 ** 3);
 
-    process.stdout.write(`   [Node ${i + 1}] Processing ${ghost.address.slice(0, 6)}... `);
+    process.stdout.write(`   [Node #${i + 2}] Processing ${ghost.address.slice(0, 6)}... `);
 
     try {
       // A. Check if already registered
