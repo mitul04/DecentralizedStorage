@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/web3dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 class BlockchainService {
   // 1. DYNAMIC CONFIG VARIABLES (Loaded from assets/app_config.json)
   late String _rpcUrl;
@@ -78,7 +79,6 @@ class BlockchainService {
   Future<void> init() async {
     try {
       // 1. Load the Auto-Generated Config
-      // This file was created by your 'deploy.ts' script!
       final String configString = await rootBundle.loadString('assets/app_config.json');
       final Map<String, dynamic> config = jsonDecode(configString);
 
@@ -109,25 +109,24 @@ class BlockchainService {
     String fileAbi = await rootBundle.loadString("assets/file_registry_abi.json");
     _fileContract = DeployedContract(
       ContractAbi.fromJson(fileAbi, "FileRegistry"),
-      EthereumAddress.fromHex(_fileAddr), // Use dynamic address
+      EthereumAddress.fromHex(_fileAddr), 
     );
 
     // --- CONTRACT 2: NODE REGISTRY ---
     String nodeAbi = await rootBundle.loadString("assets/node_registry_abi.json");
     _nodeContract = DeployedContract(
       ContractAbi.fromJson(nodeAbi, "StorageNodeRegistry"),
-      EthereumAddress.fromHex(_nodeAddr), // Use dynamic address
+      EthereumAddress.fromHex(_nodeAddr), 
     );
 
-    // --- CONTRACT 3: REWARD TOKEN ABI (Prepare it for later use)
+    // --- CONTRACT 3: REWARD TOKEN ABI ---
     String tokenAbiString = await rootBundle.loadString("assets/reward_token_abi.json");
     _rewardTokenAbiDefinition = ContractAbi.fromJson(tokenAbiString, "RewardToken");
   }
 
   Future<String> getRewardTokenBalance() async {
     try {
-      // 1. Get Token Address from NodeRegistry (Source of Truth)
-      // We ask the NodeRegistry "Which token are you using?"
+      // 1. Get Token Address from NodeRegistry
       final tokenFunc = _nodeContract.function('token');
       final result = await _client.call(
         contract: _nodeContract,
@@ -137,10 +136,9 @@ class BlockchainService {
       
       final EthereumAddress tokenAddress = result[0] as EthereumAddress;
       
-      // 2. Call balanceOf on that address
-      // 2. Create the Contract Object dynamically using the loaded ABI
+      // 2. Create the Contract Object
       final tokenContract = DeployedContract(
-        _rewardTokenAbiDefinition, // 👈 USE LOADED ABI HERE
+        _rewardTokenAbiDefinition, 
         tokenAddress
       );
 
@@ -155,7 +153,6 @@ class BlockchainService {
       final balanceBigInt = balanceResult.first as BigInt;
       
       // Convert Wei (18 decimals) to Human Readable Number
-      // e.g. 1250000000000000000000 -> 1250.00
       double balance = balanceBigInt / BigInt.from(10).pow(18);
       return balance.toStringAsFixed(2);
 
@@ -165,10 +162,20 @@ class BlockchainService {
     }
   }
 
-  // --- READ: Fetch Files ---
+  // --- 🆕 READ: Fetch Files I Uploaded (My Uploads) ---
   Future<List<Map<String, dynamic>>> fetchUserFiles() async {
+    return _fetchFilesFromContract('getMyFiles');
+  }
+
+  // --- 🆕 READ: Fetch Files Shared With Me (Received) ---
+  Future<List<Map<String, dynamic>>> fetchReceivedFiles() async {
+    return _fetchFilesFromContract('getSharedFiles');
+  }
+
+  // --- HELPER: Generic Fetcher to handle Smart Contract Calls ---
+  Future<List<Map<String, dynamic>>> _fetchFilesFromContract(String functionName) async {
     try {
-      final function = _fileContract.function('getMyFiles');
+      final function = _fileContract.function(functionName);
       
       final result = await _client.call(
         contract: _fileContract,
@@ -179,26 +186,35 @@ class BlockchainService {
 
       List<dynamic> rawFiles = result[0];
 
+      // MAPPING: Must match Solidity Struct Order exactly:
+      // 0: owner, 1: cid, 2: fileName, 3: fileType, 4: fileSize, 
+      // 5: timestamp, 6: targetReplication, 7: hosts, 8: sharedWith
+      
       List<Map<String, dynamic>> cleanFiles = rawFiles.map((fileData) {
         return {
           'owner': fileData[0].toString(),
           'cid': fileData[1].toString(),
           'fileName': fileData[2].toString(),
           'fileType': fileData[3].toString(),
-          'hosts': (fileData[4] as List).map((e) => e.toString()).toList(),
-          'fileSize': fileData[5].toString(),
-          'timestamp': fileData[6].toString(),
-          'targetReplication': fileData[7].toString(),
+          'fileSize': fileData[4].toString(),
+          'timestamp': fileData[5].toString(),
+          'targetReplication': fileData[6].toString(),
+          'hosts': (fileData[7] as List).map((e) => e.toString()).toList(),
+          // We ignore sharedWith (index 8) for UI display to keep it simple
         };
       }).toList();
 
-      await _cacheFiles(cleanFiles);
+      // Only cache "My Files" to avoid overwriting cache with shared files
+      if (functionName == 'getMyFiles') {
+         await _cacheFiles(cleanFiles);
+      }
       
       return cleanFiles;
       
     } catch (e) {
-      print("⚠️ Network unreachable for Files. Loading cache... ($e)");
-      return await getCachedFiles(); // Auto-fallback
+      print("⚠️ Network error fetching $functionName: $e");
+      if (functionName == 'getMyFiles') return await getCachedFiles();
+      return []; 
     }
   }
 
@@ -223,7 +239,7 @@ class BlockchainService {
             fileName, 
             "unknown", 
             BigInt.from(fileSize), 
-            ethAddresses, // <--- PASSING THE FULL LIST HERE
+            ethAddresses, 
             BigInt.from(replication)
           ],
         ),

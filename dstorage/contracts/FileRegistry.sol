@@ -4,21 +4,26 @@ pragma solidity ^0.8.20;
 contract FileRegistry {
     struct File {
         address owner;
-        string cid;             
+        string cid;              
         string fileName;        
-        string fileType;        
-        address[] hosts;        
-        uint256 fileSize;       
+        string fileType;               
+        uint256 fileSize;        
         uint256 timestamp;
         uint256 targetReplication;
+        address[] hosts;      // Nodes storing it
+        address[] sharedWith; // 🆕 List of people who received this file
     }
 
     mapping(string => File) private fileMap;
     
-    // 1. NEW: Store a list of CIDs for every user
+    // 1. Store a list of CIDs for every user (Uploaded)
     mapping(address => string[]) private userFiles; 
 
+    // 2. Store a list of CIDs shared WITH a user (Received)
+    mapping(address => string[]) private sharedFiles;
+
     event FileRegistered(string cid, string fileName, address indexed owner);
+    event FileShared(string cid, address indexed from, address indexed to); // 🆕 Event
 
     function registerFile(
         string memory _cid,
@@ -30,6 +35,9 @@ contract FileRegistry {
     ) external {
         require(fileMap[_cid].owner == address(0), "File already exists");
 
+        // Initialize empty address array for sharedWith
+        address[] memory emptyShared;
+
         fileMap[_cid] = File({
             owner: msg.sender,
             cid: _cid,
@@ -38,16 +46,32 @@ contract FileRegistry {
             hosts: _hosts,
             fileSize: _fileSize,
             timestamp: block.timestamp,
-            targetReplication: _targetReplication
+            targetReplication: _targetReplication,
+            sharedWith: emptyShared // Initialize empty
         });
 
-        // 2. NEW: Add this CID to the user's list
         userFiles[msg.sender].push(_cid);
 
         emit FileRegistered(_cid, _fileName, msg.sender);
     }
 
-    // 3. NEW: Get all files for the caller
+    // --- SHARE FUNCTION ---
+    function shareFile(string memory _cid, address _recipient) external {
+        require(fileMap[_cid].owner == msg.sender, "Only owner can share");
+        require(_recipient != address(0), "Invalid recipient");
+
+        // 1. Add recipient to the file's access list
+        fileMap[_cid].sharedWith.push(_recipient);
+
+        // 2. Add file to the recipient's "Inbox"
+        sharedFiles[_recipient].push(_cid);
+
+        emit FileShared(_cid, msg.sender, _recipient);
+    }
+
+    // --- GETTERS ---
+
+    // Get files I UPLOADED (Sent)
     function getMyFiles() external view returns (File[] memory) {
         string[] memory cids = userFiles[msg.sender];
         File[] memory files = new File[](cids.length);
@@ -58,7 +82,18 @@ contract FileRegistry {
         return files;
     }
 
-    // Keep the old helper just in case
+    // Get files SHARED WITH ME (Received)
+    function getSharedFiles() external view returns (File[] memory) {
+        string[] memory cids = sharedFiles[msg.sender];
+        File[] memory files = new File[](cids.length);
+        
+        for (uint i = 0; i < cids.length; i++) {
+            files[i] = fileMap[cids[i]];
+        }
+        return files;
+    }
+
+    // Helper for single file details
     function getFile(string memory _cid)
         external
         view
@@ -68,11 +103,12 @@ contract FileRegistry {
             string memory fileName,
             string memory fileType,
             uint256 fileSize,
-            address[] memory hosts
+            address[] memory hosts,
+            address[] memory sharedWith // Return shared list too
         )
     {
         File memory f = fileMap[_cid];
         require(f.owner != address(0), "File not found");
-        return (f.owner, f.cid, f.fileName, f.fileType, f.fileSize, f.hosts);
+        return (f.owner, f.cid, f.fileName, f.fileType, f.fileSize, f.hosts, f.sharedWith);
     }
 }

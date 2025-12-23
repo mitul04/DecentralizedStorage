@@ -25,6 +25,31 @@
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "cid",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "FileShared",
+    "type": "event"
+  },
+  {
     "inputs": [
       {
         "internalType": "string",
@@ -63,6 +88,11 @@
         "internalType": "address[]",
         "name": "hosts",
         "type": "address[]"
+      },
+      {
+        "internalType": "address[]",
+        "name": "sharedWith",
+        "type": "address[]"
       }
     ],
     "stateMutability": "view",
@@ -95,9 +125,64 @@
             "type": "string"
           },
           {
+            "internalType": "uint256",
+            "name": "fileSize",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "targetReplication",
+            "type": "uint256"
+          },
+          {
             "internalType": "address[]",
             "name": "hosts",
             "type": "address[]"
+          },
+          {
+            "internalType": "address[]",
+            "name": "sharedWith",
+            "type": "address[]"
+          }
+        ],
+        "internalType": "struct FileRegistry.File[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getSharedFiles",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "cid",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "fileName",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "fileType",
+            "type": "string"
           },
           {
             "internalType": "uint256",
@@ -113,6 +198,16 @@
             "internalType": "uint256",
             "name": "targetReplication",
             "type": "uint256"
+          },
+          {
+            "internalType": "address[]",
+            "name": "hosts",
+            "type": "address[]"
+          },
+          {
+            "internalType": "address[]",
+            "name": "sharedWith",
+            "type": "address[]"
           }
         ],
         "internalType": "struct FileRegistry.File[]",
@@ -157,6 +252,24 @@
       }
     ],
     "name": "registerFile",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_cid",
+        "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "_recipient",
+        "type": "address"
+      }
+    ],
+    "name": "shareFile",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

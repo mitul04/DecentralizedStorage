@@ -1,5 +1,5 @@
-import 'dart:io'; // Needed for File type
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import '../services/blockchain_service.dart';
@@ -16,11 +16,12 @@ class FilesScreen extends StatefulWidget {
 class _FilesScreenState extends State<FilesScreen> {
   final BlockchainService _service = BlockchainService();
   final EncryptionService _encryptionService = EncryptionService();
-  final StorageService _storageService = StorageService(); // 👈 Init Storage Service
+  final StorageService _storageService = StorageService();
 
   String? _gatewayUrl;
   
-  List<Map<String, dynamic>> _files = [];
+  List<Map<String, dynamic>> _sentFiles = [];     // 🆕
+  List<Map<String, dynamic>> _receivedFiles = []; // 🆕
   bool _isLoading = true;
 
   @override
@@ -30,41 +31,37 @@ class _FilesScreenState extends State<FilesScreen> {
   }
 
   Future<void> _initAndLoad() async {
-    // 2. Load Config FIRST to get the Gateway IP
+    // 1. Config Loading
     try {
       final String configString = await rootBundle.loadString('assets/app_config.json');
       final Map<String, dynamic> config = jsonDecode(configString);
-      
-      // We assume your Node is running on Port 3000 on the same IP as the server
       if (config.containsKey('serverIp')) {
         setState(() {
           _gatewayUrl = "http://${config['serverIp']}:3000";
         });
-        print("🌍 Gateway Configured: $_gatewayUrl");
       }
     } catch (e) {
       print("❌ Config Load Error: $e");
     }
 
-    // 1. Load Cache
+    // 2. Load Cache (Only Sent Files are cached currently)
     final cached = await _service.getCachedFiles();
     _sortFiles(cached);
-    
-    if (mounted) {
-      setState(() {
-        _files = cached;
-        if (_files.isNotEmpty) _isLoading = false; 
-      });
-    }
+    if (mounted) setState(() => _sentFiles = cached);
 
-    // 2. Load Network
+    // 3. Load Network Data (BOTH TABS)
     await _service.init();
-    final fresh = await _service.fetchUserFiles();
-    _sortFiles(fresh);
+    
+    final sent = await _service.fetchUserFiles();
+    final received = await _service.fetchReceivedFiles(); // 🆕 Fetch Inbox
+
+    _sortFiles(sent);
+    _sortFiles(received);
 
     if (mounted) {
       setState(() {
-        _files = fresh;
+        _sentFiles = sent;
+        _receivedFiles = received;
         _isLoading = false;
       });
     }
@@ -83,6 +80,7 @@ class _FilesScreenState extends State<FilesScreen> {
     _initAndLoad();
   }
 
+  // ... (Helper formats: _formatSize, _formatDate remain the same) ...
   String _formatSize(String sizeStr) {
     int bytes = int.tryParse(sizeStr) ?? 0;
     if (bytes < 1024) return '$bytes B';
@@ -98,9 +96,11 @@ class _FilesScreenState extends State<FilesScreen> {
     return "${dt.day}/${dt.month}/${dt.year} at $hour:$minute";
   }
 
-  // --- ACTION: Show Full Details (Updated with Download) ---
+  // ... (_showFileDetails remains the same) ...
   void _showFileDetails(Map<String, dynamic> file) {
-    showModalBottomSheet(
+      // (Copy your existing _showFileDetails code here exactly as it was)
+      // Be sure to include the Download Logic we added previously!
+      showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -121,7 +121,6 @@ class _FilesScreenState extends State<FilesScreen> {
               Center(child: Container(width: 40, height: 4, color: Colors.grey[300])),
               const SizedBox(height: 20),
               
-              // Filename
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Text(
@@ -131,7 +130,6 @@ class _FilesScreenState extends State<FilesScreen> {
               ),
               const SizedBox(height: 10),
               
-              // CID Box
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
@@ -157,7 +155,6 @@ class _FilesScreenState extends State<FilesScreen> {
                 ),
               ),
               
-              // Decryption Key Box (Hidden if not encrypted)
               FutureBuilder<String?>(
                 future: _encryptionService.getKeyForCid(cid),
                 builder: (context, snapshot) {
@@ -204,7 +201,6 @@ class _FilesScreenState extends State<FilesScreen> {
 
               const SizedBox(height: 20),
 
-              // Network Status
               Text("Network Status (${hosts.length}/$targetRep Nodes)", 
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF6C63FF))),
               const SizedBox(height: 8),
@@ -227,26 +223,18 @@ class _FilesScreenState extends State<FilesScreen> {
 
               const SizedBox(height: 20),
               
-              // 🔽 DOWNLOAD & VIEW BUTTON (Connects to StorageService)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    // 1. Check if we already have it (Cache)
                     File? file = await _storageService.getCachedFile(cid, fileName);
-
                     if (file == null) {
-                       // 2. If not, Download from Network
-                       Navigator.pop(context); // Close sheet to show snackbar clearly
-                       ScaffoldMessenger.of(context).showSnackBar(
-                         const SnackBar(content: Text("⬇️ Cache miss. Downloading from decentralized network..."), duration: Duration(seconds: 1))
-                       );
-                       
-                       // Perform Download
-                       file = await _storageService.downloadFile(cid, fileName, _gatewayUrl!);
+                        Navigator.pop(context); 
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("⬇️ Cache miss. Downloading..."), duration: Duration(seconds: 1))
+                        );
+                        file = await _storageService.downloadFile(cid, fileName, _gatewayUrl!);
                     }
-
-                    // 3. Open File
                     if (file != null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text("✅ File Ready: ${file.path.split('/').last}"))
@@ -254,7 +242,7 @@ class _FilesScreenState extends State<FilesScreen> {
                       await _storageService.openFile(file);
                     } else {
                        ScaffoldMessenger.of(context).showSnackBar(
-                         const SnackBar(content: Text("❌ Failed to retrieve file from Gateway."))
+                         const SnackBar(content: Text("❌ Failed to retrieve file."))
                        );
                     }
                   },
@@ -268,10 +256,7 @@ class _FilesScreenState extends State<FilesScreen> {
                   ),
                 ),
               ),
-              // 🔼 END BUTTON
-
               const SizedBox(height: 10),
-              
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
@@ -287,108 +272,136 @@ class _FilesScreenState extends State<FilesScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // ... (Keep existing build method exactly as it was) ...
-    // Copying the build method from your provided code to ensure completeness
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("My Cloud", style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-      ),
-      body: _isLoading && _files.isEmpty
-        ? const Center(child: CircularProgressIndicator())
-        : _files.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+  // --- 🆕 HELPER: Build List View to avoid code duplication ---
+  Widget _buildFileList(List<Map<String, dynamic>> files, String emptyMsg, IconData emptyIcon) {
+    if (_isLoading && files.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (files.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(emptyIcon, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(emptyMsg),
+            TextButton(onPressed: _refresh, child: const Text("Refresh"))
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _initAndLoad,
+      color: const Color(0xFF6C63FF),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: files.length,
+        itemBuilder: (context, index) {
+          final file = files[index];
+          // ... (Existing Card Logic) ...
+          final List hosts = file['hosts'] ?? [];
+          final String targetRep = (file['targetReplication'] ?? "1").toString();
+          final int targetRepInt = int.tryParse(targetRep) ?? 1;
+          
+          final String imageUrl = "https://ipfs.io/ipfs/${file['cid']}";
+          final bool isImage = file['fileName'].toString().toLowerCase().endsWith('jpg') || 
+                                file['fileName'].toString().toLowerCase().endsWith('png') ||
+                                file['fileName'].toString().toLowerCase().endsWith('jpeg');
+
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.only(bottom: 16),
+            child: InkWell(
+              onTap: () => _showFileDetails(file),
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
                   children: [
-                    const Icon(Icons.cloud_off, size: 64, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    const Text("No files yet. Upload one!"),
-                    TextButton(onPressed: _refresh, child: const Text("Refresh"))
+                    Container(
+                      width: 60, height: 60,
+                      decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+                      child: isImage
+                        ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.broken_image, color: Colors.grey)))
+                        : const Icon(Icons.insert_drive_file, color: Color(0xFF6C63FF), size: 30),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(file['fileName'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const SizedBox(height: 4),
+                          Text("${_formatSize(file['fileSize'])} • ${_formatDate(file['timestamp'])}", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: hosts.length >= targetRepInt ? Colors.green[50] : Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: hosts.length >= targetRepInt ? Colors.green : Colors.orange, width: 0.5)
+                              ),
+                              child: Row(children: [
+                                Icon(Icons.cloud_done, size: 12, color: hosts.length >= targetRepInt ? Colors.green : Colors.orange),
+                                const SizedBox(width: 4),
+                                Text("${hosts.length}/$targetRep Nodes", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: hosts.length >= targetRepInt ? Colors.green : Colors.orange)),
+                              ]),
+                            ),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) { if (value == 'details') _showFileDetails(file); },
+                      itemBuilder: (BuildContext context) {
+                        return [ const PopupMenuItem(value: 'details', child: Text('View Details')), const PopupMenuItem(value: 'share', child: Text('Share Link')) ];
+                      },
+                    ),
                   ],
                 ),
-              )
-            : RefreshIndicator(
-                onRefresh: _initAndLoad,
-                color: const Color(0xFF6C63FF),
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: _files.length,
-                  itemBuilder: (context, index) {
-                    final file = _files[index];
-                    final List hosts = file['hosts'] ?? [];
-                    final String targetRep = (file['targetReplication'] ?? "1").toString();
-                    final int targetRepInt = int.tryParse(targetRep) ?? 1;
-                    
-                    final String imageUrl = "https://ipfs.io/ipfs/${file['cid']}";
-                    final bool isImage = file['fileName'].toString().toLowerCase().endsWith('jpg') || 
-                                         file['fileName'].toString().toLowerCase().endsWith('png') ||
-                                         file['fileName'].toString().toLowerCase().endsWith('jpeg');
-
-                    return Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      child: InkWell(
-                        onTap: () => _showFileDetails(file),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 60, height: 60,
-                                decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                                child: isImage
-                                  ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.broken_image, color: Colors.grey)))
-                                  : const Icon(Icons.insert_drive_file, color: Color(0xFF6C63FF), size: 30),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(file['fileName'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    const SizedBox(height: 4),
-                                    Text("${_formatSize(file['fileSize'])} • ${_formatDate(file['timestamp'])}", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                                    const SizedBox(height: 8),
-                                    Row(children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: hosts.length >= targetRepInt ? Colors.green[50] : Colors.orange[50],
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: hosts.length >= targetRepInt ? Colors.green : Colors.orange, width: 0.5)
-                                        ),
-                                        child: Row(children: [
-                                          Icon(Icons.cloud_done, size: 12, color: hosts.length >= targetRepInt ? Colors.green : Colors.orange),
-                                          const SizedBox(width: 4),
-                                          Text("${hosts.length}/$targetRep Nodes", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: hosts.length >= targetRepInt ? Colors.green : Colors.orange)),
-                                        ]),
-                                      ),
-                                    ]),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuButton<String>(
-                                onSelected: (value) { if (value == 'details') _showFileDetails(file); },
-                                itemBuilder: (BuildContext context) {
-                                  return [ const PopupMenuItem(value: 'details', child: Text('View Details')), const PopupMenuItem(value: 'share', child: Text('Share Link')) ];
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
               ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 🆕 DEFAULT TAB CONTROLLER FOR TABS
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("My Cloud", style: TextStyle(color: Colors.black)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.black),
+          // 🆕 THE TABS
+          bottom: const TabBar(
+            labelColor: Color(0xFF6C63FF),
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Color(0xFF6C63FF),
+            tabs: [
+              Tab(text: "My Uploads"),
+              Tab(text: "Received"),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            // Tab 1: Sent Files
+            _buildFileList(_sentFiles, "No uploads yet.", Icons.cloud_upload),
+            
+            // Tab 2: Received Files
+            _buildFileList(_receivedFiles, "No shared files yet.", Icons.move_to_inbox),
+          ],
+        ),
+      ),
     );
   }
 }
