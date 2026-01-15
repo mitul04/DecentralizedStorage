@@ -1,18 +1,416 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>D-Storage Node</title>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeCloud</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 50px; }
-      h1 { color: #6C63FF; }
-      .status { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: inline-block; }
+        :root {
+            --primary: #6C63FF;
+            --primary-hover: #5a52d5;
+            --bg: #F8FAFC;
+            --sidebar-bg: #FFFFFF;
+            --text-main: #1E293B;
+            --text-light: #64748B;
+            --success: #10B981;
+            --border: #E2E8F0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: var(--bg); 
+            color: var(--text-main); 
+            height: 100vh; 
+            display: flex; 
+            overflow: hidden; 
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+
+        .brand {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 40px;
+            padding-left: 8px;
+        }
+
+        .nav-item {
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            color: var(--text-light);
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 15px;
+        }
+
+        .nav-item:hover { background: #EEF2FF; color: var(--primary); }
+        .nav-item.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(108, 99, 255, 0.2); }
+
+        /* --- MAIN CONTENT --- */
+        .main-content {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        h2 { font-size: 24px; font-weight: 700; color: var(--text-main); }
+
+        .status-badge {
+            background: #ECFDF5;
+            color: var(--success);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #D1FAE5;
+        }
+
+        .status-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 0 2px #D1FAE5; }
+
+        /* --- CARDS --- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* Force 3 columns */
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .card {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        .card-label { color: var(--text-light); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .card-value { font-size: 28px; font-weight: 700; color: var(--text-main); }
+        .card-sub { font-size: 14px; color: var(--text-light); margin-top: 4px; }
+
+        /* --- BUTTONS & INPUTS --- */
+        input[type="password"] {
+            width: 100%; padding: 16px; margin-bottom: 16px; 
+            border: 1px solid var(--border); border-radius: 12px; font-size: 16px;
+            outline: none; transition: border 0.2s;
+        }
+        input:focus { border-color: var(--primary); }
+
+        .btn-primary {
+            width: 100%; background: var(--primary); color: white; border: none; 
+            padding: 16px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;
+            transition: background 0.2s;
+        }
+        .btn-primary:hover { background: var(--primary-hover); }
+
+        .btn-refresh {
+            background: white; border: 1px solid var(--border); color: var(--text-main);
+            padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px;
+            display: flex; align-items: center; gap: 8px; transition: all 0.2s;
+        }
+        .btn-refresh:hover { border-color: var(--primary); color: var(--primary); background: #F8FAFC; }
+
+        /* --- LOGS --- */
+        .console-container {
+            background: #1E293B;
+            color: #10B981;
+            padding: 24px;
+            border-radius: 16px;
+            font-family: 'Courier New', monospace;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry { margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        .log-time { color: #94A3B8; margin-right: 12px; }
     </style>
-  </head>
-  <body>
-    <div class="status">
-      <h1>🚀 Desktop Node</h1>
-      <p>Status: <b>Initializing...</b></p>
-    </div>
-  </body>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="brand">🌨️ DeCloud</div>
+        <div class="nav-item active" onclick="switchTab('dashboard')">📊 Dashboard</div>
+        <div class="nav-item" onclick="switchTab('wallet')">💰 My Wallet</div>
+        <div class="nav-item" onclick="switchTab('settings')">⚙️ Settings</div>
+    </nav>
+
+    <main class="main-content">
+        
+        <div id="view-dashboard">
+            <div class="header-row">
+                <h2>Node Overview</h2>
+                <div class="status-badge" id="status-badge">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <div class="card-label">Files Hosted</div>
+                    <div class="card-value" id="dashboard-files">0</div>
+                    <div class="card-sub">Local storage</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Storage Used</div>
+                    <div class="card-value">0 MB</div>
+                    <div class="card-sub">Available: 500 GB</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Total Earnings</div>
+                    <div class="card-value" id="dashboard-earnings">0.00</div>
+                    <div class="card-sub">STOR Tokens</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 16px;">Activity Log</h3>
+            <div class="console-container" id="console-logs">
+                <div class="log-entry"><span class="log-time">System</span> Node initialized. Waiting for files...</div>
+            </div>
+        </div>
+
+        <div id="view-wallet" style="display: none;">
+            <div class="header-row">
+                <h2>My Wallet</h2>
+                <button class="btn-refresh" id="refresh-btn" onclick="refreshBalance()" style="display: none;">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div class="card" id="wallet-login-card" style="max-width: 600px; margin: 0 auto;">
+                <div class="card-label">Connect Identity</div>
+                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
+                    Enter your Private Key to authenticate this node. 
+                    <br><small>We do not store this key permanently.</small>
+                </p>
+                <input type="password" id="private-key-input" placeholder="Paste Private Key (0x...)" autocomplete="off">
+                <button id="connect-btn" class="btn-primary" onclick="connectWallet()">Connect Wallet</button>
+            </div>
+
+            <div id="wallet-stats" style="display: none;">
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-label">Node Address</div>
+                    <div class="card-value" id="wallet-address" style="font-size: 20px; font-family: monospace; color: var(--primary); word-break: break-all;">
+                        0x...
+                    </div>
+                </div>
+
+                <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                    <div class="card">
+                        <div class="card-label">ETH Balance</div>
+                        <div class="card-value" id="wallet-eth">0.000000</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">STOR Balance</div>
+                        <div class="card-value" id="wallet-stor">0.000000</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-settings" style="display: none;">
+            <div class="header-row">
+                <h2>Node Settings</h2>
+            </div>
+
+            <div class="card" style="max-width: 600px;">
+                <div class="card-label">Node Registration</div>
+                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
+                    Register this device on the blockchain so users can find it.
+                </p>
+
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Storage Capacity (GB)</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <input type="number" id="reg-capacity" value="100" style="flex: 1; margin: 0;">
+                    <div style="padding: 16px; background: #F1F5F9; border-radius: 12px; font-weight: 600; color: var(--text-light);">GB</div>
+                </div>
+
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Public Endpoint URL</label>
+                <input type="text" id="reg-endpoint" value="http://192.168.43.118:3000" style="margin-bottom: 24px; color: var(--text-light);">
+
+                <button id="btn-register" class="btn-primary" onclick="registerNode()">
+                    📡 Register Node on Blockchain
+                </button>
+
+                <p id="reg-status" style="margin-top: 15px; font-size: 14px; text-align: center; display: none;"></p>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        // --- NAVIGATION LOGIC ---
+        function switchTab(tabName) {
+            document.getElementById('view-dashboard').style.display = 'none';
+            document.getElementById('view-wallet').style.display = 'none';
+            document.getElementById('view-settings').style.display = 'none';
+            
+            document.getElementById(`view-${tabName}`).style.display = 'block';
+
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // --- WALLET ACTIONS ---
+        function connectWallet() {
+            const input = document.getElementById('private-key-input');
+            const btn = document.getElementById('connect-btn');
+            
+            let key = input.value.trim(); 
+            if (!key.startsWith("0x")) key = "0x" + key;
+
+            if (key.length !== 66) {
+                alert(`Invalid Key format! Length: ${key.length} (Expected 66). Check for spaces.`);
+                return;
+            }
+            
+            btn.innerText = "Connecting...";
+            btn.disabled = true;
+            ipcRenderer.send('connect-wallet', key);
+        }
+
+        function refreshBalance() {
+            // Add spin animation effect
+            const btn = document.getElementById('refresh-btn');
+            btn.innerText = "⏳ Updating...";
+            ipcRenderer.send('refresh-balance');
+        }
+
+                // --- REGISTRATION LOGIC ---
+        function registerNode() {
+            const capacity = document.getElementById('reg-capacity').value;
+            const endpoint = document.getElementById('reg-endpoint').value;
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+
+            if (!capacity || !endpoint) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            // UI Feedback
+            btn.innerText = "⏳ Registering...";
+            btn.disabled = true;
+            status.style.display = 'block';
+            status.style.color = 'orange';
+            status.innerText = "Sending transaction to Blockchain...";
+
+            // Send to Main Process
+            ipcRenderer.send('register-node', { capacity, endpoint });
+        }
+
+        // Listen for Result
+        ipcRenderer.on('registration-success', (event, txHash) => {
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+
+            btn.innerText = "✅ Registered";
+            btn.style.background = "#10B981"; // Green
+            
+            status.style.color = 'green';
+            status.innerHTML = `Success! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
+        });
+
+        ipcRenderer.on('registration-error', (event, errorMsg) => {
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+
+            btn.innerText = "📡 Register Node on Blockchain"; // Reset
+            btn.disabled = false;
+            
+            status.style.color = 'red';
+            status.innerText = "Error: " + errorMsg;
+        });
+
+
+        // --- LISTENERS ---
+
+        // 1. Wallet Updates
+        ipcRenderer.on('wallet-connected', (event, data) => {
+            // UI State Switch
+            document.getElementById('wallet-login-card').style.display = 'none';
+            document.getElementById('wallet-stats').style.display = 'block';
+            document.getElementById('refresh-btn').style.display = 'flex'; // Show refresh button
+            document.getElementById('refresh-btn').innerText = "🔄 Refresh";
+
+            // Populate Wallet Tab
+            document.getElementById('wallet-address').innerText = data.address;
+            document.getElementById('wallet-eth').innerText = data.eth;
+            document.getElementById('wallet-stor').innerText = data.stor;
+
+            // Populate Dashboard (FIXED LOGIC HERE ✅)
+            // Now targeting specific IDs so numbers don't jump
+            document.getElementById('dashboard-earnings').innerText = data.stor; 
+        });
+
+        // 2. Server/Blockchain Status
+        ipcRenderer.on('server-status', (event, data) => {
+            const statusText = document.getElementById('status-text');
+            const statusDot = document.getElementById('status-dot');
+            const logs = document.getElementById('console-logs');
+
+            statusText.innerText = data.status;
+            
+            // Color Logic
+            let colorHex = '#10B981'; // Green default
+            if (data.color === 'red') colorHex = '#EF4444';
+            if (data.color === 'orange') colorHex = '#F59E0B';
+            
+            statusDot.style.background = colorHex;
+            statusDot.style.boxShadow = `0 0 0 2px ${colorHex}33`; // Glow effect
+            statusText.style.color = colorHex;
+
+            // Log Logic
+            if (data.status.includes('Stored') || data.status.includes('Processing')) {
+                const now = new Date().toLocaleTimeString();
+                const newLog = document.createElement('div');
+                newLog.className = 'log-entry';
+                
+                let message = data.status;
+                if (data.cid) {
+                    message += ` <span style="color: #60A5FA;">[CID: ${data.cid.substring(0, 10)}...]</span>`;
+                    
+                    // Increment File Count safely
+                    if (data.status.includes('Stored')) {
+                         const countEl = document.getElementById('dashboard-files');
+                         countEl.innerText = parseInt(countEl.innerText) + 1;
+                    }
+                }
+                newLog.innerHTML = `<span class="log-time">${now}</span> ${message}`;
+                logs.prepend(newLog);
+            }
+        });
+    </script>
+</body>
 </html>
