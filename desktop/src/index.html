@@ -7,6 +7,7 @@
     <title>DeCloud</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ... (Keep your existing CSS exactly as is) ... */
         :root {
             --primary: #6C63FF;
             --primary-hover: #5a52d5;
@@ -101,7 +102,7 @@
         /* --- CARDS --- */
         .grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr); /* Force 3 columns */
+            grid-template-columns: repeat(3, 1fr); 
             gap: 24px;
             margin-bottom: 32px;
         }
@@ -118,8 +119,35 @@
         .card-value { font-size: 28px; font-weight: 700; color: var(--text-main); }
         .card-sub { font-size: 14px; color: var(--text-light); margin-top: 4px; }
 
+        /* --- TABLES & LISTS --- */
+        .table-container {
+            background: white; border-radius: 16px; border: 1px solid var(--border); overflow: hidden;
+        }
+        .table-row {
+            display: flex; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border);
+            align-items: center; /* Vertically center items */
+        }
+        .table-row:last-child { border-bottom: none; }
+        .table-head { background: #F8FAFC; font-weight: 600; color: var(--text-light); font-size: 14px; }
+        
+        /* Make rows clickable for history */
+        .clickable-row { cursor: pointer; transition: background 0.1s; }
+        .clickable-row:hover { background: #F1F5F9; }
+
+        /* --- UPLOAD AREA --- */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 60px; /* Increased padding for larger feel */
+            text-align: center;
+            background: #F8FAFC;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .upload-area:hover { border-color: var(--primary); background: #EEF2FF; }
+
         /* --- BUTTONS & INPUTS --- */
-        input[type="password"] {
+        input[type="password"], input[type="text"], input[type="number"] {
             width: 100%; padding: 16px; margin-bottom: 16px; 
             border: 1px solid var(--border); border-radius: 12px; font-size: 16px;
             outline: none; transition: border 0.2s;
@@ -152,6 +180,43 @@
         }
         .log-entry { margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
         .log-time { color: #94A3B8; margin-right: 12px; }
+
+        /* --- MODAL (POPUP) --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); /* Dimmed background */
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background: white;
+            width: 500px;
+            padding: 32px;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            animation: popIn 0.2s ease-out;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .detail-row {
+            display: flex; justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-label { color: var(--text-light); font-weight: 500; }
+        .detail-value { font-weight: 600; color: var(--text-main); font-family: 'Inter', sans-serif; }
+        .cid-value { font-family: monospace; background: #F1F5F9; padding: 4px 8px; border-radius: 6px; color: var(--primary); font-size: 13px; }
+
+        .close-btn {
+            float: right; font-size: 24px; cursor: pointer; color: var(--text-light); line-height: 1;
+        }
+        .close-btn:hover { color: var(--text-main); }
     </style>
 </head>
 <body>
@@ -159,7 +224,9 @@
     <nav class="sidebar">
         <div class="brand">🌨️ DeCloud</div>
         <div class="nav-item active" onclick="switchTab('dashboard')">📊 Dashboard</div>
-        <div class="nav-item" onclick="switchTab('wallet')">💰 My Wallet</div>
+        <div class="nav-item" onclick="switchTab('upload')">📂 File Upload</div>
+        <div class="nav-item" onclick="switchTab('rewards')">🎁 Rewards</div>
+        <div class="nav-item" onclick="switchTab('profile')">👤 Profile</div>
         <div class="nav-item" onclick="switchTab('settings')">⚙️ Settings</div>
     </nav>
 
@@ -182,7 +249,7 @@
                 </div>
                 <div class="card">
                     <div class="card-label">Storage Used</div>
-                    <div class="card-value">0 MB</div>
+                    <div class="card-value" id="dashboard-storage">0 MB</div>
                     <div class="card-sub">Available: 500 GB</div>
                 </div>
                 <div class="card">
@@ -198,9 +265,107 @@
             </div>
         </div>
 
-        <div id="view-wallet" style="display: none;">
+        <div id="view-upload" style="display: none;">
             <div class="header-row">
-                <h2>My Wallet</h2>
+                <h2>File Upload</h2>
+            </div>
+            
+            <div class="card" style="margin-bottom: 32px;"> 
+                <div class="card-label">Upload to Network</div>
+                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
+                    Select a file to encrypt, chunk, and distribute to the DeCloud network.
+                </p>
+                
+                <div class="upload-area" onclick="document.getElementById('file-input').click()">
+                    <div style="font-size: 40px; margin-bottom: 16px;">☁️</div>
+                    <div style="font-weight: 600; color: var(--text-main);">Click to Select File</div>
+                    <div style="color: var(--text-light); font-size: 14px;">or drag and drop here</div>
+                </div>
+                <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)">
+
+                <div id="file-details" style="display: none; margin-top: 24px; padding: 16px; background: #F1F5F9; border-radius: 12px;">
+                    <div style="font-weight: 600;" id="file-name">filename.jpg</div>
+                    <div style="font-size: 14px; color: var(--text-light);" id="file-size">2.4 MB</div>
+                </div>
+
+                <button class="btn-primary" style="margin-top: 24px;" onclick="uploadFile()">⬆️ Upload to Network</button>
+            </div>
+
+            <h3 style="margin-bottom: 16px;">Upload History</h3>
+            <div class="table-container">
+                <div class="table-row table-head">
+                    <div style="flex: 3;">File Name</div>
+                    <div style="flex: 1;">Size</div>
+                    <div style="flex: 1;">Date</div>
+                    <div style="flex: 1; text-align: right;">Status</div>
+                </div>
+            </div>
+
+            <div id="file-modal" class="modal-overlay" style="display: none;" onclick="closeModal(event)">
+                <div class="modal-content">
+                    <span class="close-btn" onclick="closeModal()">×</span>
+                    <h2 style="margin-bottom: 4px;" id="modal-filename">File Name</h2>
+                    <p style="color: var(--text-light); margin-bottom: 24px; font-size: 14px;">File Details & Network Status</p>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">File Size</span>
+                        <span class="detail-value" id="modal-size">0 MB</span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Network Status</span>
+                        <span class="detail-value" style="color: var(--success);" id="modal-status">0/3 Nodes</span>
+                    </div>
+
+                    <div style="margin-top: 16px;">
+                        <div class="detail-label" style="margin-bottom: 8px;">IPFS CID (Content ID)</div>
+                        <div class="cid-value" id="modal-cid" style="word-break: break-all;">Qm...</div>
+                    </div>
+
+                    <button class="btn-primary" style="margin-top: 24px; background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border);" onclick="closeModal()">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-rewards" style="display: none;">
+            <div class="header-row">
+                <h2>Rewards & Earnings</h2>
+                <button class="btn-refresh" onclick="refreshBalance()">🔄 Refresh</button>
+            </div>
+            <div class="grid">
+                <div class="card">
+                    <div class="card-label">Current Balance</div>
+                    <div class="card-value" id="rewards-stor">0.00</div>
+                    <div class="card-sub">STOR Tokens</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Projected Monthly</div>
+                    <div class="card-value">150.00</div>
+                    <div class="card-sub">STOR Tokens</div>
+                </div>
+            </div>
+            <h3 style="margin-bottom: 16px;">Transaction History</h3>
+            <div class="table-container">
+                <div class="table-row table-head">
+                    <div>Date</div>
+                    <div>Activity</div>
+                    <div>Amount</div>
+                    <div>Status</div>
+                </div>
+                <div class="table-row">
+                    <div>2026-02-10</div>
+                    <div>Storage Rent</div>
+                    <div style="color: var(--success);">+ 10.00 STOR</div>
+                    <div>✅ Completed</div>
+                </div>
+                </div>
+        </div>
+
+        <div id="view-profile" style="display: none;">
+             <div class="header-row">
+                <h2>My Profile</h2>
                 <button class="btn-refresh" id="refresh-btn" onclick="refreshBalance()" style="display: none;">
                     🔄 Refresh
                 </button>
@@ -209,21 +374,36 @@
             <div class="card" id="wallet-login-card" style="max-width: 600px; margin: 0 auto;">
                 <div class="card-label">Connect Identity</div>
                 <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
-                    Enter your Private Key to authenticate this node. 
-                    <br><small>We do not store this key permanently.</small>
+                    Enter your <strong>12-Word Secret Phrase</strong> or <strong>Private Key</strong> to authenticate this node. 
+                    <br><small>We do not store this secret permanently.</small>
                 </p>
-                <input type="password" id="private-key-input" placeholder="Paste Private Key (0x...)" autocomplete="off">
+                <input type="password" id="private-key-input" placeholder="apple banana car... or 0x..." autocomplete="off">
                 <button id="connect-btn" class="btn-primary" onclick="connectWallet()">Connect Wallet</button>
             </div>
 
             <div id="wallet-stats" style="display: none;">
-                <div class="card" style="margin-bottom: 24px;">
-                    <div class="card-label">Node Address</div>
-                    <div class="card-value" id="wallet-address" style="font-size: 20px; font-family: monospace; color: var(--primary); word-break: break-all;">
-                        0x...
+                <div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--primary);">
+                    <div class="header-row" style="margin-bottom: 16px;">
+                        <div class="card-label">Node Identity</div>
+                        <div style="background: #EEF2FF; color: var(--primary); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">Active</div>
+                    </div>
+                    <div style="display: flex; gap: 40px;">
+                        <div>
+                            <div class="card-sub">Reputation Score</div>
+                            <div style="font-size: 20px; font-weight: 700;">💯 98/100</div>
+                        </div>
+                        <div>
+                            <div class="card-sub">Node Uptime</div>
+                            <div style="font-size: 20px; font-weight: 700;">⏱️ 99.9%</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 24px;">
+                        <div class="card-label">Wallet Address</div>
+                        <div class="card-value" id="wallet-address" style="font-size: 16px; font-family: monospace; color: var(--text-light); word-break: break-all; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                            0x...
+                        </div>
                     </div>
                 </div>
-
                 <div class="grid" style="grid-template-columns: 1fr 1fr;">
                     <div class="card">
                         <div class="card-label">ETH Balance</div>
@@ -238,29 +418,24 @@
         </div>
 
         <div id="view-settings" style="display: none;">
-            <div class="header-row">
+             <div class="header-row">
                 <h2>Node Settings</h2>
             </div>
-
             <div class="card" style="max-width: 600px;">
                 <div class="card-label">Node Registration</div>
                 <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
                     Register this device on the blockchain so users can find it.
                 </p>
-
                 <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Storage Capacity (GB)</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     <input type="number" id="reg-capacity" value="100" style="flex: 1; margin: 0;">
                     <div style="padding: 16px; background: #F1F5F9; border-radius: 12px; font-weight: 600; color: var(--text-light);">GB</div>
                 </div>
-
                 <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Public Endpoint URL</label>
                 <input type="text" id="reg-endpoint" value="http://192.168.43.118:3000" style="margin-bottom: 24px; color: var(--text-light);">
-
                 <button id="btn-register" class="btn-primary" onclick="registerNode()">
                     📡 Register Node on Blockchain
                 </button>
-
                 <p id="reg-status" style="margin-top: 15px; font-size: 14px; text-align: center; display: none;"></p>
             </div>
         </div>
@@ -272,42 +447,66 @@
 
         // --- NAVIGATION LOGIC ---
         function switchTab(tabName) {
-            document.getElementById('view-dashboard').style.display = 'none';
-            document.getElementById('view-wallet').style.display = 'none';
-            document.getElementById('view-settings').style.display = 'none';
-            
+            ['dashboard', 'upload', 'rewards', 'profile', 'settings'].forEach(view => {
+                const el = document.getElementById(`view-${view}`);
+                if (el) el.style.display = 'none';
+            });
             document.getElementById(`view-${tabName}`).style.display = 'block';
-
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            event.target.classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        // --- FILE UPLOAD LOGIC ---
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (file) {
+                document.getElementById('file-details').style.display = 'block';
+                document.getElementById('file-name').innerText = file.name;
+                document.getElementById('file-size').innerText = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+            }
+        }
+
+        function uploadFile() {
+            // Note: In real logic, this calls main process. For now it triggers alert or placeholder logic
+             alert("File selected! To finish upload implementation, we need to bridge the Auth Token to this view.");
         }
 
         // --- WALLET ACTIONS ---
         function connectWallet() {
-            const input = document.getElementById('private-key-input');
-            const btn = document.getElementById('connect-btn');
-            
-            let key = input.value.trim(); 
-            if (!key.startsWith("0x")) key = "0x" + key;
+          const input = document.getElementById('private-key-input');
+          const btn = document.getElementById('connect-btn');
+          
+          let secret = input.value.trim(); 
 
-            if (key.length !== 66) {
-                alert(`Invalid Key format! Length: ${key.length} (Expected 66). Check for spaces.`);
-                return;
-            }
-            
-            btn.innerText = "Connecting...";
-            btn.disabled = true;
-            ipcRenderer.send('connect-wallet', key);
+          if (!secret) {
+              alert("Please enter your 12-word phrase or private key.");
+              return;
+          }
+
+          if (secret.includes(" ")) {
+              const wordCount = secret.split(/\s+/).length;
+              if (wordCount < 12) {
+                  alert(`Phrase only has ${wordCount} words. Standard phrases are 12 or 24 words.`);
+                  return;
+              }
+          } else {
+              if (!secret.startsWith("0x") && secret.length === 64) {
+                  secret = "0x" + secret;
+              }
+          }
+          
+          btn.innerText = "Connecting...";
+          btn.disabled = true;
+          ipcRenderer.send('connect-wallet', secret);
         }
 
         function refreshBalance() {
-            // Add spin animation effect
-            const btn = document.getElementById('refresh-btn');
-            btn.innerText = "⏳ Updating...";
+            const btns = document.querySelectorAll('.btn-refresh');
+            btns.forEach(b => b.innerText = "⏳ Updating...");
             ipcRenderer.send('refresh-balance');
         }
 
-                // --- REGISTRATION LOGIC ---
+        // --- REGISTRATION LOGIC ---
         function registerNode() {
             const capacity = document.getElementById('reg-capacity').value;
             const endpoint = document.getElementById('reg-endpoint').value;
@@ -319,25 +518,94 @@
                 return;
             }
 
-            // UI Feedback
             btn.innerText = "⏳ Registering...";
             btn.disabled = true;
             status.style.display = 'block';
             status.style.color = 'orange';
             status.innerText = "Sending transaction to Blockchain...";
 
-            // Send to Main Process
             ipcRenderer.send('register-node', { capacity, endpoint });
         }
 
-        // Listen for Result
+        // --- MODAL LOGIC ---
+        function openFileDetails(name, size, cid, nodes) {
+            // 1. Populate Data
+            document.getElementById('modal-filename').innerText = name;
+            document.getElementById('modal-size').innerText = size;
+            document.getElementById('modal-cid').innerText = cid;
+            document.getElementById('modal-status').innerText = nodes;
+
+            // 2. Color Logic for Status
+            const statusEl = document.getElementById('modal-status');
+            if(nodes.includes('Active') || nodes.includes('3/3')) { // Adjusted logic for "Active" status
+                statusEl.style.color = '#10B981'; // Green
+                statusEl.innerHTML = `🟢 ${nodes}`;
+            } else {
+                statusEl.style.color = '#F59E0B'; // Orange
+                statusEl.innerHTML = `🟠 ${nodes}`;
+            }
+
+            // 3. Show Modal
+            document.getElementById('file-modal').style.display = 'flex';
+        }
+
+        function closeModal(event) {
+            // Close if clicked on overlay (background) OR the close button
+            if (!event || event.target.id === 'file-modal' || event.target.className === 'close-btn' || event.target.tagName === 'BUTTON') {
+                document.getElementById('file-modal').style.display = 'none';
+            }
+        }
+
+        // --- LISTENERS ---
+        
+        // 🚨 NEW: Receive History Data from Main Process
+        ipcRenderer.on('update-history', (event, files) => {
+            const tableContainer = document.querySelector('.table-container');
+            
+            // Keep the header row
+            const headerHtml = `
+                <div class="table-row table-head">
+                    <div style="flex: 3;">File Name</div>
+                    <div style="flex: 1;">Size</div>
+                    <div style="flex: 1;">Date</div>
+                    <div style="flex: 1; text-align: right;">Status</div>
+                </div>`;
+
+            // Generate rows for each file
+            const rowsHtml = files.map(file => `
+                <div class="table-row clickable-row" 
+                     onclick="openFileDetails('${file.name}', '${file.size}', '${file.cid}', '${file.status}')">
+                    <div style="flex: 3; font-weight: 500; display: flex; align-items: center; gap: 10px;">
+                        <span>📄</span> ${file.name}
+                    </div>
+                    <div style="flex: 1;">${file.size}</div>
+                    <div style="flex: 1; color: var(--text-light);">${file.date}</div>
+                    <div style="flex: 1; text-align: right; color: var(--success); font-weight: 600;">
+                        ✅ ${file.status}
+                    </div>
+                </div>
+            `).join('');
+
+            // Update the table
+            tableContainer.innerHTML = headerHtml + rowsHtml;
+        });
+
+        // 🚨 NEW: Update Dashboard Counters
+        ipcRenderer.on('update-dashboard', (event, stats) => {
+            // Update "Files Hosted"
+            const filesCountEl = document.getElementById('dashboard-files');
+            if(filesCountEl) filesCountEl.innerText = stats.files;
+
+            // Update "Storage Used"
+            const storageEl = document.getElementById('dashboard-storage');
+            if(storageEl) storageEl.innerText = stats.storage + " MB";
+        });
+
         ipcRenderer.on('registration-success', (event, txHash) => {
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
-
             btn.innerText = "✅ Registered";
-            btn.style.background = "#10B981"; // Green
-            
+            btn.style.background = "#10B981"; 
             status.style.color = 'green';
             status.innerHTML = `Success! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
         });
@@ -345,67 +613,47 @@
         ipcRenderer.on('registration-error', (event, errorMsg) => {
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
-
-            btn.innerText = "📡 Register Node on Blockchain"; // Reset
+            btn.innerText = "📡 Register Node on Blockchain"; 
             btn.disabled = false;
-            
             status.style.color = 'red';
             status.innerText = "Error: " + errorMsg;
         });
 
-
-        // --- LISTENERS ---
-
-        // 1. Wallet Updates
         ipcRenderer.on('wallet-connected', (event, data) => {
-            // UI State Switch
             document.getElementById('wallet-login-card').style.display = 'none';
             document.getElementById('wallet-stats').style.display = 'block';
-            document.getElementById('refresh-btn').style.display = 'flex'; // Show refresh button
+            document.getElementById('refresh-btn').style.display = 'flex';
             document.getElementById('refresh-btn').innerText = "🔄 Refresh";
 
-            // Populate Wallet Tab
             document.getElementById('wallet-address').innerText = data.address;
             document.getElementById('wallet-eth').innerText = data.eth;
             document.getElementById('wallet-stor').innerText = data.stor;
-
-            // Populate Dashboard (FIXED LOGIC HERE ✅)
-            // Now targeting specific IDs so numbers don't jump
+            document.getElementById('rewards-stor').innerText = data.stor;
             document.getElementById('dashboard-earnings').innerText = data.stor; 
         });
 
-        // 2. Server/Blockchain Status
         ipcRenderer.on('server-status', (event, data) => {
             const statusText = document.getElementById('status-text');
             const statusDot = document.getElementById('status-dot');
             const logs = document.getElementById('console-logs');
 
             statusText.innerText = data.status;
-            
-            // Color Logic
-            let colorHex = '#10B981'; // Green default
+            let colorHex = '#10B981'; 
             if (data.color === 'red') colorHex = '#EF4444';
             if (data.color === 'orange') colorHex = '#F59E0B';
             
             statusDot.style.background = colorHex;
-            statusDot.style.boxShadow = `0 0 0 2px ${colorHex}33`; // Glow effect
+            statusDot.style.boxShadow = `0 0 0 2px ${colorHex}33`; 
             statusText.style.color = colorHex;
 
-            // Log Logic
             if (data.status.includes('Stored') || data.status.includes('Processing')) {
                 const now = new Date().toLocaleTimeString();
                 const newLog = document.createElement('div');
                 newLog.className = 'log-entry';
-                
                 let message = data.status;
                 if (data.cid) {
                     message += ` <span style="color: #60A5FA;">[CID: ${data.cid.substring(0, 10)}...]</span>`;
-                    
-                    // Increment File Count safely
-                    if (data.status.includes('Stored')) {
-                         const countEl = document.getElementById('dashboard-files');
-                         countEl.innerText = parseInt(countEl.innerText) + 1;
-                    }
+                    // Note: Dashboard file count update logic removed from here as it's now handled by update-dashboard event
                 }
                 newLog.innerHTML = `<span class="log-time">${now}</span> ${message}`;
                 logs.prepend(newLog);

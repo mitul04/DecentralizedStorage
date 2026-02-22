@@ -5,16 +5,63 @@ import cors from 'cors';
 import * as fs from 'fs';
 import multer from 'multer';
 import { create } from 'ipfs-http-client';
-import { ethers } from 'ethers'; 
+import { ethers } from 'ethers';
+import axios from 'axios';
+import jwt from 'jsonwebtoken';
 
 // --- CONFIGURATION ---
 const SERVER_PORT = 3000;
-const IPFS_NODE_URL = 'http://127.0.0.1:5001'; // Default IPFS Desktop URL
+const COORDINATOR_URL = 'http://127.0.0.1:4000';
+const JWT_SECRET = 'secret';
+const IPFS_NODE_URL = 'http://127.0.0.1:5001';
 
 // --- GLOBAL VARIABLES ---
 let mainWindow: BrowserWindow | null = null;
-let ipfs: any; // Will hold the IPFS client instance
-let wallet: ethers.Wallet | null = null; // 👈 NEW: Global Wallet Variable
+let ipfs: any;
+let wallet: ethers.Wallet | ethers.HDNodeWallet | null = null;
+let heartbeatInterval: NodeJS.Timeout | null = null;
+
+// --- 💾 DATABASE SYSTEM (NEW) ---
+const dbPath = path.join(app.getPath('userData'), 'database.json');
+let fileHistory: any[] = [];
+
+// Load Data from JSON
+function loadDatabase() {
+    if (fs.existsSync(dbPath)) {
+        try {
+            const data = fs.readFileSync(dbPath, 'utf-8');
+            fileHistory = JSON.parse(data);
+            console.log(`📚 Database loaded: ${fileHistory.length} files.`);
+        } catch (e) {
+            console.error("⚠️ Database corrupt, starting fresh.");
+            fileHistory = [];
+        }
+    }
+}
+
+// Save Data to JSON
+function saveDatabase() {
+    fs.writeFileSync(dbPath, JSON.stringify(fileHistory, null, 2));
+    // Whenever we save, update the UI immediately
+    if (mainWindow) {
+        mainWindow.webContents.send('update-history', fileHistory);
+        updateDashboardStats();
+    }
+}
+
+function updateDashboardStats() {
+    if (!mainWindow) return;
+    
+    const totalFiles = fileHistory.length;
+    // Calculate total size in MB
+    const totalSizeBytes = fileHistory.reduce((acc, file) => acc + (file.sizeBytes || 0), 0);
+    const totalSizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(2);
+
+    mainWindow.webContents.send('update-dashboard', {
+        files: totalFiles,
+        storage: totalSizeMB
+    });
+}
 
 // --- 1. THE SERVER BRAIN 🧠 ---
 function startServer() {
@@ -22,14 +69,14 @@ function startServer() {
   server.use(cors());
   server.use(express.json());
 
-  // Setup Storage Folder (userData is safer than local folders)
+  // Setup Storage Folder
   const uploadDir = path.join(app.getPath('userData'), 'uploads');
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-  // Setup Multer (File Handler)
+  // Setup Multer
   const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, file.originalname) // Keep original name
+    filename: (req, file, cb) => cb(null, file.originalname)
   });
   const upload = multer({ storage: storage });
 
@@ -47,22 +94,22 @@ function startServer() {
     res.send('Desktop Node is Online & Ready.');
   });
 
-  // --- API: UPLOAD (Used by Mobile App) ---
-  server.post('/upload', upload.single('file'), async (req, res) => {
+  // --- API: UPLOAD ---
+  // Note: authenticateUpload middleware removed for testing ease as per previous context
+  server.post('/upload', upload.single('file'), async (req: any, res: any) => {
     if (!req.file) {
-      res.status(400).send('No file uploaded.');
+      console.log("⚠️ Upload request received, but no file found in 'file' field.");
+      res.status(400).send('No file uploaded. Ensure form-data key is "file".');
       return;
     }
 
-    console.log(`📂 Received File: ${req.file.filename}`);
-    updateUI(`Processing: ${req.file.filename}...`, 'orange');
+    console.log(`📂 Received File: ${req.file.originalname}`); 
+    updateUI(`Processing ${req.file.originalname}...`, 'orange');
 
     try {
-      // 1. Read file buffer
       const filePath = path.join(uploadDir, req.file.filename);
       const fileBuffer = fs.readFileSync(filePath);
 
-      // 2. Upload to IPFS
       if (!ipfs) throw new Error("IPFS not connected");
       
       console.log("⬆️ Uploading to IPFS...");
@@ -70,9 +117,21 @@ function startServer() {
       const cid = result.path;
       console.log(`✅ IPFS CID: ${cid}`);
 
-      // 3. Success!
+      // --- SAVE TO DATABASE (NEW) ---
+      const newFile = {
+          name: req.file.originalname,
+          size: (req.file.size / (1024 * 1024)).toFixed(2) + ' MB',
+          sizeBytes: req.file.size,
+          date: new Date().toLocaleDateString(),
+          cid: cid,
+          status: 'Active' // Default status
+      };
+      fileHistory.unshift(newFile); // Add to top of list
+      saveDatabase();
+      // -----------------------------
+
       updateUI(`Stored: ${req.file.filename}`, 'green', cid);
-      res.status(200).send(cid); // Send CID back to phone
+      res.status(200).send(cid);
 
     } catch (error: any) {
       console.error("❌ Upload Failed:", error);
@@ -81,9 +140,30 @@ function startServer() {
     }
   });
 
-  // Start Listening
+  // --- API: RETRIEVE FILE 🔍 ---
+  server.get('/retrieve/:cid', async (req: any, res: any) => {
+    const cid = req.params.cid;
+    console.log(`⬇️ Retrieval Request for CID: ${cid}`);
+
+    try {
+      if (!ipfs) throw new Error("IPFS not connected");
+
+      const stream = ipfs.cat(cid);
+      for await (const chunk of stream) {
+        res.write(chunk);
+      }
+      
+      res.end();
+      console.log(`✅ Served CID: ${cid}`);
+
+    } catch (err: any) {
+      console.error("❌ Retrieval Failed:", err);
+      res.status(500).send("Error retrieving file from IPFS Node");
+    }
+  });
+
   server.listen(SERVER_PORT, '0.0.0.0', () => {
-    console.log(`✅ Server running on port ${SERVER_PORT}`);
+    console.log(`✅ Node Server running on port ${SERVER_PORT}`);
     updateUI('🟢 Online (Waiting for files)', 'green', 'No uploads yet');
   });
 }
@@ -98,40 +178,56 @@ function updateUI(status: string, color: string, cid?: string) {
 // --- 2. THE ELECTRON SHELL 🐚 ---
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 900,
+    width: 1000,
     height: 700,
     webPreferences: {
-      nodeIntegration: true, // Needed to listen to IPC events
+      nodeIntegration: true,
       contextIsolation: false,
     },
   });
 
-  // Points to your src/index.html
   mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
+
+  // When window loads, send the saved data!
+  mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow?.webContents.send('update-history', fileHistory);
+      updateDashboardStats();
+  });
 }
 
 // --- 3. WALLET & BLOCKCHAIN LOGIC 💰 ---
-const RPC_URL = "http://127.0.0.1:9545"; // Ensure this matches your Hardhat port (8545 or 9545)
+const RPC_URL = "http://127.0.0.1:9545";
 const REWARD_TOKEN_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const NODE_REGISTRY_ADDR = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
 // 🟢 LOGIN EVENT
-ipcMain.on('connect-wallet', async (event, privateKey) => {
+ipcMain.on('connect-wallet', async (event, secretInput) => {
   try {
     console.log("🔗 Connecting Wallet...");
     
-    // 1. Setup Provider
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     
-    // 2. Setup Global Wallet
-    wallet = new ethers.Wallet(privateKey, provider);
-    console.log(`✅ Wallet Connected: ${wallet.address}`);
+    // Determine: Is it a Phrase or a Key?
+    const cleanInput = secretInput.trim(); 
 
-    // 3. Fetch Balance immediately
+    if (cleanInput.includes(" ")) {
+        // Case A: Seed Phrase -> Returns HDNodeWallet
+        console.log("📝 Detected Seed Phrase. Generating Wallet...");
+        wallet = ethers.Wallet.fromPhrase(cleanInput, provider);
+    } else {
+        // Case B: Private Key -> Returns Wallet
+        console.log("🔑 Detected Private Key. Recovering Wallet...");
+        wallet = new ethers.Wallet(cleanInput, provider);
+    }
+
+    console.log(`✅ Wallet Connected: ${wallet?.address}`);
+
+    if (wallet) startHeartbeat(wallet.address);
     checkBalanceAndReply();
 
   } catch (err: any) {
-    console.error("❌ Wallet Error:", err);
+    console.error("❌ Wallet Connection Failed:", err);
+    event.reply('registration-error', "Invalid Phrase or Key. Please check for typos.");
   }
 });
 
@@ -145,7 +241,7 @@ ipcMain.on('refresh-balance', async (event) => {
     }
 });
 
-// 📡 REGISTER NODE EVENT (Final Fix 🛠️)
+// 📡 REGISTER NODE EVENT
 ipcMain.on('register-node', async (event, data) => {
     console.log("\n--- 🏁 STARTING REGISTRATION ---");
     
@@ -157,16 +253,12 @@ ipcMain.on('register-node', async (event, data) => {
     try {
         const provider = wallet.provider;
         
-        // 1. Setup Contracts
         const tokenAbi = ["function approve(address, uint256) returns (bool)", "function allowance(address, address) view returns (uint256)"];
         const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, tokenAbi, wallet);
         
-        // 🚨 UPDATED ABI: Added 'bool isMobile' to match your contract
         const registryAbi = ["function registerNode(string ipAddress, uint256 capacity, bool isMobile)"];
         const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, wallet);
 
-        // 2. CHECK ALLOWANCE
-        // Your contract requires 500 STOR, but we approve 1000 just to be safe.
         const currentAllowance = await (tokenContract as any).allowance(wallet.address, NODE_REGISTRY_ADDR);
         console.log(`🔓 Current Allowance: ${ethers.formatEther(currentAllowance)} STOR`);
         
@@ -177,18 +269,15 @@ ipcMain.on('register-node', async (event, data) => {
             console.log("✅ Approved.");
         }
 
-        // 3. REGISTER (Corrected Arguments)
         console.log("📝 Preparing Registration...");
         
         const currentNonce = await provider?.getTransactionCount(wallet.address, "latest");
-        const capacityBytes = BigInt(data.capacity) * BigInt("1073741824"); // GB to Bytes
+        const capacityBytes = BigInt(data.capacity) * BigInt("1073741824"); 
 
-        // 🚨 THE FIX IS HERE:
-        // Contract Signature: registerNode(string _ipAddress, uint256 _totalCapacity, bool _isMobile)
         const txReg = await (registryContract as any).registerNode(
-            data.endpoint,   // 1. IP Address (String)
-            capacityBytes,   // 2. Capacity (Uint256)
-            false,           // 3. isMobile (Bool) -> False for Desktop
+            data.endpoint,   
+            capacityBytes,   
+            false,           
             { 
                 nonce: currentNonce, 
                 gasLimit: 500000 
@@ -215,24 +304,20 @@ async function checkBalanceAndReply() {
     if(!provider) return;
 
     try {
-        // 1. ETH Balance
         const ethBalanceWei = await provider.getBalance(wallet.address);
         const ethBalance = ethers.formatEther(ethBalanceWei);
 
-        // 2. STOR Balance
         const abi = ["function balanceOf(address owner) view returns (uint256)"];
         const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, abi, provider);
         
         let storBalance = "0.00";
         try {
-            // Cast to 'any' to bypass strict TS check
             const storWei = await (tokenContract as any).balanceOf(wallet.address);
             storBalance = ethers.formatEther(storWei);
         } catch (e) {
-            console.log("⚠️ Could not fetch STOR balance (Contract might be wrong address)");
+            console.log("⚠️ Could not fetch STOR balance");
         }
 
-        // 3. Send to UI
         mainWindow.webContents.send('wallet-connected', {
             address: wallet.address,
             eth: parseFloat(ethBalance).toFixed(4),
@@ -244,9 +329,59 @@ async function checkBalanceAndReply() {
     }
 }
 
+// 💓 THE HEARTBEAT FUNCTION
+function startHeartbeat(walletAddress: string) {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+    console.log("💓 Starting Heartbeat Service...");
+    
+    // Run immediately
+    sendHeartbeat(walletAddress);
+
+    // Then run every 30 seconds
+    heartbeatInterval = setInterval(() => {
+        sendHeartbeat(walletAddress);
+    }, 30000); 
+}
+
+// Auto-detect IP helper (Optional but recommended)
+import * as os from 'os';
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]!) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '127.0.0.1'; 
+}
+
+async function sendHeartbeat(address: string) {
+    try {
+        // Use auto-detected IP if possible, or fallback to the one in your config if you prefer
+        const localIP = getLocalIP(); 
+        
+        const payload = {
+            walletAddress: address,
+            ipAddress: `http://${localIP}:${SERVER_PORT}`, 
+            freeCapacity: "100GB", 
+            timestamp: Date.now()
+        };
+
+        await axios.post(`${COORDINATOR_URL}/api/nodes/heartbeat`, payload);
+        console.log(`💓 Ping sent. Advertising IP: http://${localIP}:${SERVER_PORT}`);
+        
+    } catch (error) {
+        console.log("⚠️ Heartbeat failed: Coordinator unreachable at " + COORDINATOR_URL);
+    }
+}
+
 app.whenReady().then(() => {
+  loadDatabase(); // 👈 LOAD DATA ON START
   createWindow();
-  startServer(); // 🚀 Launch Server
+  startServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
