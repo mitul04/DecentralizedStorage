@@ -10,7 +10,7 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   
   // 2. The Recipient (Your Desktop Node - Account #2)
-  const nodeAddress = "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"; 
+  const nodeAddress = "0x4f6a79909244731c44382f8e717A9CDA989C69FA"; 
 
   console.log(`🏦 Deployer (${deployer.address}) is preparing to send tokens...`);
 
