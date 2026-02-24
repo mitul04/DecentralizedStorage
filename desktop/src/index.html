@@ -556,6 +556,26 @@
             }
         }
 
+        // --- IP UPDATE LOGIC (NEW) ---
+        function updateIpOnChain() {
+            const endpoint = document.getElementById('reg-endpoint').value;
+            if (!endpoint) {
+                alert("Please enter a new endpoint URL.");
+                return;
+            }
+
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+
+            btn.innerText = "⏳ Updating IP...";
+            btn.disabled = true;
+            status.style.display = 'block';
+            status.style.color = 'orange';
+            status.innerText = "Sending update transaction to Blockchain...";
+
+            ipcRenderer.send('update-ip', { endpoint });
+        }
+
         // --- LISTENERS ---
         
         // 🚨 NEW: Receive History Data from Main Process
@@ -628,8 +648,42 @@
             document.getElementById('wallet-address').innerText = data.address;
             document.getElementById('wallet-eth').innerText = data.eth;
             document.getElementById('wallet-stor').innerText = data.stor;
-            document.getElementById('rewards-stor').innerText = data.stor;
-            document.getElementById('dashboard-earnings').innerText = data.stor; 
+
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+            
+            // 🚨 MODIFIED: Change button behavior based on registration status
+            if (data.isRegistered) {
+                // Node is already registered! Turn it into an Update button.
+                btn.innerText = "🔄 Update IP on Blockchain";
+                btn.style.background = "#3B82F6"; // Blue color for update
+                btn.disabled = false; 
+                btn.onclick = updateIpOnChain; // Point to our new function!
+                
+                status.style.display = 'block';
+                status.style.color = '#3B82F6';
+                status.innerText = "Node is registered. You can update your IP above.";
+            } else {
+                // Not registered. Keep default behavior.
+                btn.innerText = "📡 Register Node on Blockchain";
+                btn.style.background = "var(--primary)";
+                btn.disabled = false;
+                btn.onclick = registerNode; // Point to original register function
+                
+                status.style.display = 'none';
+            }
+        });
+
+        // 🚨 NEW: Listen for successful IP updates
+        ipcRenderer.on('update-success', (event, txHash) => {
+            const btn = document.getElementById('btn-register');
+            const status = document.getElementById('reg-status');
+            
+            btn.innerText = "🔄 Update IP on Blockchain";
+            btn.disabled = false;
+            
+            status.style.color = 'green';
+            status.innerHTML = `✅ IP Successfully Updated! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
         });
 
         ipcRenderer.on('server-status', (event, data) => {

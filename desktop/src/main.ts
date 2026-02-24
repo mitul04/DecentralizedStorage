@@ -292,7 +292,47 @@ ipcMain.on('register-node', async (event, data) => {
 
     } catch (err: any) {
         console.error("❌ Registration Failed:", err);
-        event.reply('registration-error', err.message || "Unknown error");
+        const errorMsg = err.message || "";
+        
+        // 🚨 NEW: Gracefully catch the contract revert error
+        if (errorMsg.toLowerCase().includes("already registered") || errorMsg.toLowerCase().includes("registered")) {
+            console.log("ℹ️ Node was already registered. Updating UI.");
+            event.reply('registration-success', "Already Registered");
+        } else {
+            event.reply('registration-error', errorMsg);
+        }
+    }
+});
+
+// 🔄 UPDATE IP EVENT
+ipcMain.on('update-ip', async (event, data) => {
+    console.log("\n--- 🔄 STARTING IP UPDATE ---");
+    
+    if (!wallet) {
+        event.reply('registration-error', "Wallet not connected.");
+        return;
+    }
+
+    try {
+        const provider = wallet.provider;
+        
+        // Use the exact function signature from your contract
+        const registryAbi = ["function updateIpAddress(string _newIp)"];
+        const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, wallet);
+
+        console.log(`📝 Updating IP to: ${data.endpoint}...`);
+        
+        const txUpdate = await (registryContract as any).updateIpAddress(data.endpoint);
+        
+        console.log(`⏳ Update Tx Sent: ${txUpdate.hash}`);
+        await txUpdate.wait();
+        
+        console.log("✅ SUCCESS: Node IP Updated!");
+        event.reply('update-success', txUpdate.hash);
+
+    } catch (err: any) {
+        console.error("❌ IP Update Failed:", err);
+        event.reply('registration-error', err.message || "Unknown error during IP update");
     }
 });
 
@@ -307,8 +347,8 @@ async function checkBalanceAndReply() {
         const ethBalanceWei = await provider.getBalance(wallet.address);
         const ethBalance = ethers.formatEther(ethBalanceWei);
 
-        const abi = ["function balanceOf(address owner) view returns (uint256)"];
-        const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, abi, provider);
+        const tokenAbi = ["function balanceOf(address owner) view returns (uint256)"];
+        const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, tokenAbi, provider);
         
         let storBalance = "0.00";
         try {
@@ -318,10 +358,25 @@ async function checkBalanceAndReply() {
             console.log("⚠️ Could not fetch STOR balance");
         }
 
+        // 🚨 NEW: Ask the Blockchain if this specific wallet is registered
+        let isNodeRegistered = false;
+        try {
+            // Using the struct signature from your Flutter implementation
+            const registryAbi = ["function nodes(address) view returns (string, uint256, uint256, uint256, uint256, bool, bool)"];
+            const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, provider);
+            
+            const nodeProfile = await (registryContract as any).nodes(wallet.address);
+            isNodeRegistered = nodeProfile[6]; // The 7th item in the struct is the boolean 'isRegistered'
+            console.log(`📡 Registration Check: ${isNodeRegistered ? 'Already Registered' : 'Not Registered'}`);
+        } catch (e) {
+            console.log("⚠️ Could not fetch node profile from blockchain.");
+        }
+
         mainWindow.webContents.send('wallet-connected', {
             address: wallet.address,
             eth: parseFloat(ethBalance).toFixed(4),
-            stor: parseFloat(storBalance).toFixed(2)
+            stor: parseFloat(storBalance).toFixed(2),
+            isRegistered: isNodeRegistered // 👈 Pass the status to the frontend
         });
         
     } catch (err) {
