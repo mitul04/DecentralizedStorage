@@ -27,6 +27,7 @@ contract StorageNodeRegistry is Ownable {
     event HeartbeatReceived(address indexed nodeAddress, uint256 timestamp);
     event CapacityUpdated(address indexed nodeAddress, uint256 newFreeCapacity);
     event IPUpdated(address indexed nodeAddress, string newIp);
+    event NodeDeregistered(address indexed nodeAddress);
 
     constructor(address _tokenAddress) Ownable(msg.sender) {
         require(_tokenAddress != address(0), "Invalid token address");
@@ -93,6 +94,20 @@ contract StorageNodeRegistry is Ownable {
         }
 
         emit CapacityUpdated(msg.sender, nodes[msg.sender].freeCapacity);
+    }
+
+    // De-register node
+    function deregisterNode() external {
+        require(nodes[msg.sender].isRegistered, "Node not registered");
+        
+        // 1. Mark as unregistered so the network stops routing files here
+        nodes[msg.sender].isRegistered = false;
+        
+        // 2. Refund the 500 STOR stake back to the node operator
+        bool success = rewardToken.transfer(msg.sender, stakeAmount);
+        require(success, "Stake refund failed");
+
+        emit NodeDeregistered(msg.sender);
     }
 
     function getAllNodes() external view returns (address[] memory) {
