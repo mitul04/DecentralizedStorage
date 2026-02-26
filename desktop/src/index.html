@@ -255,7 +255,7 @@
                 <div class="card">
                     <div class="card-label">Total Earnings</div>
                     <div class="card-value" id="dashboard-earnings">0.00</div>
-                    <div class="card-sub">STOR Tokens</div>
+                    <div class="card-sub">DCLD Tokens</div>
                 </div>
             </div>
 
@@ -338,12 +338,12 @@
                 <div class="card">
                     <div class="card-label">Current Balance</div>
                     <div class="card-value" id="rewards-stor">0.00</div>
-                    <div class="card-sub">STOR Tokens</div>
+                    <div class="card-sub">DCLD Tokens</div>
                 </div>
                 <div class="card">
                     <div class="card-label">Projected Monthly</div>
                     <div class="card-value">150.00</div>
-                    <div class="card-sub">STOR Tokens</div>
+                    <div class="card-sub">DCLD Tokens</div>
                 </div>
             </div>
             <h3 style="margin-bottom: 16px;">Transaction History</h3>
@@ -357,7 +357,7 @@
                 <div class="table-row">
                     <div>2026-02-10</div>
                     <div>Storage Rent</div>
-                    <div style="color: var(--success);">+ 10.00 STOR</div>
+                    <div style="color: var(--success);">+ 10.00 DCLD</div>
                     <div>✅ Completed</div>
                 </div>
                 </div>
@@ -410,7 +410,7 @@
                         <div class="card-value" id="wallet-eth">0.000000</div>
                     </div>
                     <div class="card">
-                        <div class="card-label">STOR Balance</div>
+                        <div class="card-label">DCLD Balance</div>
                         <div class="card-value" id="wallet-stor">0.000000</div>
                     </div>
                 </div>
@@ -428,13 +428,16 @@
                 </p>
                 <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Storage Capacity (GB)</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <input type="number" id="reg-capacity" value="100" style="flex: 1; margin: 0;">
+                    <input type="number" id="reg-capacity" value="0" style="flex: 1; margin: 0;">
                     <div style="padding: 16px; background: #F1F5F9; border-radius: 12px; font-weight: 600; color: var(--text-light);">GB</div>
                 </div>
                 <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Public Endpoint URL</label>
-                <input type="text" id="reg-endpoint" value="http://192.168.43.118:3000" style="margin-bottom: 24px; color: var(--text-light);">
+                <input type="text" id="reg-endpoint" value="http://<IP>:<PORT>" style="margin-bottom: 24px; color: var(--text-light);">
                 <button id="btn-register" class="btn-primary" onclick="registerNode()">
                     📡 Register Node on Blockchain
+                </button>
+                <button id="btn-deregister" class="btn-primary" style="background: #EF4444; margin-top: 12px; display: none;" onclick="deregisterNode()">
+                    ⚠️ Deregister Node & Withdraw Stake
                 </button>
                 <p id="reg-status" style="margin-top: 15px; font-size: 14px; text-align: center; display: none;"></p>
             </div>
@@ -576,6 +579,17 @@
             ipcRenderer.send('update-ip', { endpoint });
         }
 
+        // --- DEREGISTER LOGIC ---
+        function deregisterNode() {
+            if (confirm("Are you sure you want to deregister? Your node will go offline and your 500 DCLD stake will be returned to your wallet.")) {
+                const btn = document.getElementById('btn-deregister');
+                btn.innerText = "⏳ Deregistering...";
+                btn.disabled = true;
+                
+                ipcRenderer.send('deregister-node');
+            }
+        }
+
         // --- LISTENERS ---
         
         // 🚨 NEW: Receive History Data from Main Process
@@ -622,12 +636,25 @@
         });
 
         ipcRenderer.on('registration-success', (event, txHash) => {
-            const btn = document.getElementById('btn-register');
+            const btnReg = document.getElementById('btn-register');
+            const btnDereg = document.getElementById('btn-deregister'); 
             const status = document.getElementById('reg-status');
-            btn.innerText = "✅ Registered";
-            btn.style.background = "#10B981"; 
-            status.style.color = 'green';
-            status.innerHTML = `Success! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
+            
+            // 1. Morph the Register button into the Update IP button
+            btnReg.innerText = "🔄 Update IP on Blockchain";
+            btnReg.style.background = "#3B82F6"; // Blue
+            btnReg.disabled = false; 
+            btnReg.onclick = updateIpOnChain; 
+            
+            // 2. Reveal the Deregister button
+            btnDereg.style.display = 'block'; 
+            btnDereg.innerText = "⚠️ Deregister Node & Withdraw Stake";
+            btnDereg.disabled = false;
+            
+            // 3. Show Success Status
+            status.style.display = 'block';
+            status.style.color = '#3B82F6';
+            status.innerHTML = `✅ Successfully Registered! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span><br>You can update your IP above.`;
         });
 
         ipcRenderer.on('registration-error', (event, errorMsg) => {
@@ -650,6 +677,7 @@
             document.getElementById('wallet-stor').innerText = data.stor;
 
             const btn = document.getElementById('btn-register');
+            const btnDereg = document.getElementById('btn-deregister');
             const status = document.getElementById('reg-status');
             
             // 🚨 MODIFIED: Change button behavior based on registration status
@@ -660,6 +688,10 @@
                 btn.disabled = false; 
                 btn.onclick = updateIpOnChain; // Point to our new function!
                 
+                btnDereg.style.display = 'block'; // 👈 Show Deregister button
+                btnDereg.innerText = "⚠️ Deregister Node & Withdraw Stake";
+                btnDereg.disabled = false;
+
                 status.style.display = 'block';
                 status.style.color = '#3B82F6';
                 status.innerText = "Node is registered. You can update your IP above.";
@@ -670,6 +702,8 @@
                 btn.disabled = false;
                 btn.onclick = registerNode; // Point to original register function
                 
+                btnDereg.style.display = 'none'; // 👈 Hide Deregister button  
+
                 status.style.display = 'none';
             }
         });
@@ -684,6 +718,14 @@
             
             status.style.color = 'green';
             status.innerHTML = `✅ IP Successfully Updated! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
+        });
+
+        // 🚨 NEW: Listen for successful deregistration
+        ipcRenderer.on('deregister-success', (event, txHash) => {
+            alert("✅ Node successfully deregistered! Your 500 DCLD stake has been returned.");
+            // Refreshing the balance will re-trigger 'wallet-connected'
+            // with isRegistered: false, automatically resetting the UI!
+            refreshBalance(); 
         });
 
         ipcRenderer.on('server-status', (event, data) => {

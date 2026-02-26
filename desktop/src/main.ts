@@ -8,10 +8,25 @@ import { create } from 'ipfs-http-client';
 import { ethers } from 'ethers';
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
+import * as os from 'os';
+
+
+// Auto-detect IP helper (Optional but recommended)
+function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]!) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '127.0.0.1'; 
+}
 
 // --- CONFIGURATION ---
-const SERVER_PORT = 3000;
-const COORDINATOR_URL = 'http://127.0.0.1:4000';
+const SERVER_PORT = 4000;
+const COORDINATOR_URL = 'http://127.0.0.1:7000';
 const JWT_SECRET = 'secret';
 const IPFS_NODE_URL = 'http://127.0.0.1:5001';
 
@@ -20,29 +35,27 @@ let mainWindow: BrowserWindow | null = null;
 let ipfs: any;
 let wallet: ethers.Wallet | ethers.HDNodeWallet | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
+let authToken: string | null = null; // 👈 NEW: Store the JWT
+
+// 🚨 UPDATED OBJECT:
+let nodeSettings = {
+    isRegistered: false,
+    capacity: "0", // 👈 Default to 0 safely
+    endpoint: `http://${getLocalIP()}:${SERVER_PORT}` // 👈 Auto-detects e.g., http://192.168.43.118:4000
+};
 
 // --- 💾 DATABASE SYSTEM (NEW) ---
-const dbPath = path.join(app.getPath('userData'), 'database.json');
+// const dbPath = path.join(app.getPath('userData'), 'database.json');
 let fileHistory: any[] = [];
 
-// Load Data from JSON
+// We no longer read from a file. 
+// (In the future, you can fetch this from the Coordinator's DB)
 function loadDatabase() {
-    if (fs.existsSync(dbPath)) {
-        try {
-            const data = fs.readFileSync(dbPath, 'utf-8');
-            fileHistory = JSON.parse(data);
-            console.log(`📚 Database loaded: ${fileHistory.length} files.`);
-        } catch (e) {
-            console.error("⚠️ Database corrupt, starting fresh.");
-            fileHistory = [];
-        }
-    }
+    fileHistory = [];
 }
 
-// Save Data to JSON
+// We no longer write to a file, we just update the UI
 function saveDatabase() {
-    fs.writeFileSync(dbPath, JSON.stringify(fileHistory, null, 2));
-    // Whenever we save, update the UI immediately
     if (mainWindow) {
         mainWindow.webContents.send('update-history', fileHistory);
         updateDashboardStats();
@@ -84,6 +97,7 @@ function startServer() {
   try {
     ipfs = create({ url: IPFS_NODE_URL });
     console.log("🔹 IPFS Client Initialized");
+    //console.log("🗑️ Database file located at:", path.join(app.getPath('userData'), 'database.json'));
   } catch (err) {
     console.error("❌ IPFS Init Error:", err);
     updateUI("IPFS Error - Is Desktop App Running?", "red");
@@ -195,39 +209,193 @@ function createWindow() {
   });
 }
 
+// 🔐 WEB3 AUTHENTICATION FLOW
+async function authenticateWithCoordinator(isRegistering = false): Promise<boolean> {
+    if (!wallet) return false;
+
+    try {
+        console.log(`🔐 Step 1: Requesting nonce (Mode: ${isRegistering ? 'REGISTER' : 'LOGIN'})...`);
+        
+        // 🚨 FIX 1: Sending data in the Body of a GET request using Axios 'data' property
+        const nonceRes = await axios.post(`${COORDINATOR_URL}/auth/nonce`, {
+            wallet_address: wallet.address
+        });
+        
+        const nonce = nonceRes.data.nonce;
+
+        console.log("✍️ Step 2: Signing the nonce...");
+        const signature = await wallet.signMessage(nonce);
+
+        console.log("🔑 Step 3: Verifying signature & getting token...");
+
+        // 🚨 FIX: Translate Node.js OS names into standard DB uppercase names
+        const rawOS = os.platform();
+        let dbOsType = 'WINDOWS'; // Default
+        if (rawOS === 'win32') dbOsType = 'Windows';
+        else if (rawOS === 'darwin') dbOsType = 'MacOS';
+        else if (rawOS === 'linux') dbOsType = 'Linux';
+        else dbOsType = rawOS.toUpperCase();
+        
+        // 🚨 FIX 2: Added all the newly required fields from the authController
+        const payload = {
+            wallet_address: wallet.address,
+            nonce: nonce,          // Teammate's backend now requires we send this back
+            signature: signature,
+            mode: isRegistering ? 'REGISTER' : 'LOGIN',
+            role: 'STORAGE_PEER',
+            os_type: 'LINUX', //os.platform(), // e.g., 'win32', 'darwin', 'linux'
+            declared_capacity: parseInt(nodeSettings.capacity) || 100 // Must be > 0 for registration
+        };
+
+        const verifyRes = await axios.post(`${COORDINATOR_URL}/auth/verify`, payload);
+
+        authToken = verifyRes.data.token;
+        console.log("✅ Step 4: Authentication Success! JWT secured.");
+        
+        return true;
+
+    } catch (error: any) {
+        const errorMsg = error.response?.data?.error || error.message;
+        console.error("❌ Authentication Failed:", errorMsg);
+
+        // 🚨 FIX 3: Smart Retry
+        // If we tried to LOGIN but aren't in the PostgreSQL database yet, 
+        // we catch the error and retry exactly once as a REGISTER request!
+        if (!isRegistering && errorMsg === 'Storage peer not registered') {
+            console.log("ℹ️ Node not in Coordinator DB yet. Attempting to Register...");
+            return await authenticateWithCoordinator(true); 
+        }
+
+        return false;
+    }
+}
+
 // --- 3. WALLET & BLOCKCHAIN LOGIC 💰 ---
 const RPC_URL = "http://127.0.0.1:9545";
 const REWARD_TOKEN_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const NODE_REGISTRY_ADDR = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
+// 🛠️ SHARED HELPER FUNCTION
+async function checkBalanceAndReply() {
+    if (!wallet || !mainWindow) return;
+
+    const provider = wallet.provider;
+    if(!provider) return;
+
+    try {
+        const ethBalanceWei = await provider.getBalance(wallet.address);
+        const ethBalance = ethers.formatEther(ethBalanceWei);
+
+        const tokenAbi = ["function balanceOf(address owner) view returns (uint256)"];
+        const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, tokenAbi, provider);
+        
+        let storBalance = "0.00";
+        try {
+            const storWei = await (tokenContract as any).balanceOf(wallet.address);
+            storBalance = ethers.formatEther(storWei);
+        } catch (e) {
+            console.log("⚠️ Could not fetch STOR balance");
+        }
+
+        // 🚨 NEW: Ask the Blockchain if this specific wallet is registered
+        let isNodeRegistered = false;
+        try {
+            // Using the struct signature from your Flutter implementation
+            const registryAbi = ["function nodes(address) view returns (string, uint256, uint256, uint256, uint256, bool, bool)"];
+            const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, provider);
+            
+            const nodeProfile = await (registryContract as any).nodes(wallet.address);
+            isNodeRegistered = nodeProfile[6]; // The 7th item in the struct is the boolean 'isRegistered'
+            console.log(`📡 Registration Check: ${isNodeRegistered ? 'Already Registered' : 'Not Registered'}`);
+        } catch (e) {
+            console.log("⚠️ Could not fetch node profile from blockchain.");
+        }
+
+        mainWindow.webContents.send('wallet-connected', {
+            address: wallet.address,
+            eth: parseFloat(ethBalance).toFixed(4),
+            stor: parseFloat(storBalance).toFixed(2),
+            isRegistered: isNodeRegistered // 👈 Pass the status to the frontend
+        });
+        
+    } catch (err) {
+        console.error("❌ Balance Check Failed:", err);
+    }
+}
+
+// 💓 THE HEARTBEAT FUNCTION
+function startHeartbeat(walletAddress: string) {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+    console.log("💓 Starting Heartbeat Service...");
+    
+    // Run immediately
+    sendHeartbeat(walletAddress);
+
+    // Then run every 30 seconds
+    heartbeatInterval = setInterval(() => {
+        sendHeartbeat(walletAddress);
+    }, 40000); 
+}
+
+async function sendHeartbeat(address: string) {
+    if (!authToken) {
+        console.log("⚠️ Skipping heartbeat: Not authenticated yet.");
+        return;
+    }
+
+    try {
+        const localIP = getLocalIP(); 
+        const payload = {
+            walletAddress: address,
+            ipAddress: `http://${localIP}:${SERVER_PORT}`, 
+            freeCapacity: nodeSettings.capacity + "GB", // 👈 Dynamically grabbing this from our settings!
+            timestamp: Date.now()
+        };
+
+        // 🚨 NEW: Attach the JWT Token to the request headers
+        await axios.post(`${COORDINATOR_URL}/api/nodes/heartbeat`, payload, {
+            headers: {
+                Authorization: `Bearer ${authToken}`
+            }
+        });
+        
+        console.log(`💓 Secure Ping sent. IP: http://${localIP}:${SERVER_PORT}`);
+        
+    } catch (error: any) {
+        console.log("⚠️ Heartbeat failed: " + (error.response?.data?.error || "Coordinator offline"));
+    }
+}
+
 // 🟢 LOGIN EVENT
 ipcMain.on('connect-wallet', async (event, secretInput) => {
   try {
     console.log("🔗 Connecting Wallet...");
-    
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     
-    // Determine: Is it a Phrase or a Key?
     const cleanInput = secretInput.trim(); 
-
     if (cleanInput.includes(" ")) {
-        // Case A: Seed Phrase -> Returns HDNodeWallet
-        console.log("📝 Detected Seed Phrase. Generating Wallet...");
         wallet = ethers.Wallet.fromPhrase(cleanInput, provider);
     } else {
-        // Case B: Private Key -> Returns Wallet
-        console.log("🔑 Detected Private Key. Recovering Wallet...");
         wallet = new ethers.Wallet(cleanInput, provider);
     }
 
-    console.log(`✅ Wallet Connected: ${wallet?.address}`);
+    console.log(`✅ Wallet Connected: ${wallet.address}`);
+
+    // 🚨 NEW: Authenticate with the backend immediately
+    const isAuthenticated = await authenticateWithCoordinator();
+    
+    if (!isAuthenticated) {
+        event.reply('registration-error', "Wallet connected, but backend authentication failed. Check Coordinator logs.");
+        return; 
+    }
 
     if (wallet) startHeartbeat(wallet.address);
     checkBalanceAndReply();
 
   } catch (err: any) {
     console.error("❌ Wallet Connection Failed:", err);
-    event.reply('registration-error', "Invalid Phrase or Key. Please check for typos.");
+    event.reply('registration-error', "Invalid Phrase or Key.");
   }
 });
 
@@ -336,102 +504,35 @@ ipcMain.on('update-ip', async (event, data) => {
     }
 });
 
-// 🛠️ SHARED HELPER FUNCTION
-async function checkBalanceAndReply() {
-    if (!wallet || !mainWindow) return;
-
-    const provider = wallet.provider;
-    if(!provider) return;
-
-    try {
-        const ethBalanceWei = await provider.getBalance(wallet.address);
-        const ethBalance = ethers.formatEther(ethBalanceWei);
-
-        const tokenAbi = ["function balanceOf(address owner) view returns (uint256)"];
-        const tokenContract = new ethers.Contract(REWARD_TOKEN_ADDR, tokenAbi, provider);
-        
-        let storBalance = "0.00";
-        try {
-            const storWei = await (tokenContract as any).balanceOf(wallet.address);
-            storBalance = ethers.formatEther(storWei);
-        } catch (e) {
-            console.log("⚠️ Could not fetch STOR balance");
-        }
-
-        // 🚨 NEW: Ask the Blockchain if this specific wallet is registered
-        let isNodeRegistered = false;
-        try {
-            // Using the struct signature from your Flutter implementation
-            const registryAbi = ["function nodes(address) view returns (string, uint256, uint256, uint256, uint256, bool, bool)"];
-            const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, provider);
-            
-            const nodeProfile = await (registryContract as any).nodes(wallet.address);
-            isNodeRegistered = nodeProfile[6]; // The 7th item in the struct is the boolean 'isRegistered'
-            console.log(`📡 Registration Check: ${isNodeRegistered ? 'Already Registered' : 'Not Registered'}`);
-        } catch (e) {
-            console.log("⚠️ Could not fetch node profile from blockchain.");
-        }
-
-        mainWindow.webContents.send('wallet-connected', {
-            address: wallet.address,
-            eth: parseFloat(ethBalance).toFixed(4),
-            stor: parseFloat(storBalance).toFixed(2),
-            isRegistered: isNodeRegistered // 👈 Pass the status to the frontend
-        });
-        
-    } catch (err) {
-        console.error("❌ Balance Check Failed:", err);
-    }
-}
-
-// 💓 THE HEARTBEAT FUNCTION
-function startHeartbeat(walletAddress: string) {
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-
-    console.log("💓 Starting Heartbeat Service...");
+// 🛑 DEREGISTER NODE EVENT
+ipcMain.on('deregister-node', async (event) => {
+    console.log("\n--- 🏁 STARTING DEREGISTRATION ---");
     
-    // Run immediately
-    sendHeartbeat(walletAddress);
-
-    // Then run every 30 seconds
-    heartbeatInterval = setInterval(() => {
-        sendHeartbeat(walletAddress);
-    }, 30000); 
-}
-
-// Auto-detect IP helper (Optional but recommended)
-import * as os from 'os';
-function getLocalIP() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]!) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
+    if (!wallet) {
+        event.reply('registration-error', "Wallet not connected.");
+        return;
     }
-    return '127.0.0.1'; 
-}
 
-async function sendHeartbeat(address: string) {
     try {
-        // Use auto-detected IP if possible, or fallback to the one in your config if you prefer
-        const localIP = getLocalIP(); 
+        const provider = wallet.provider;
         
-        const payload = {
-            walletAddress: address,
-            ipAddress: `http://${localIP}:${SERVER_PORT}`, 
-            freeCapacity: "100GB", 
-            timestamp: Date.now()
-        };
+        const registryAbi = ["function deregisterNode()"];
+        const registryContract = new ethers.Contract(NODE_REGISTRY_ADDR, registryAbi, wallet);
 
-        await axios.post(`${COORDINATOR_URL}/api/nodes/heartbeat`, payload);
-        console.log(`💓 Ping sent. Advertising IP: http://${localIP}:${SERVER_PORT}`);
+        console.log("📝 Sending Deregister Transaction...");
+        const txDereg = await (registryContract as any).deregisterNode();
         
-    } catch (error) {
-        console.log("⚠️ Heartbeat failed: Coordinator unreachable at " + COORDINATOR_URL);
+        console.log(`⏳ Deregister Tx Sent: ${txDereg.hash}`);
+        await txDereg.wait();
+        
+        console.log("✅ SUCCESS: Node Deregistered and stake refunded!");
+        event.reply('deregister-success', txDereg.hash);
+
+    } catch (err: any) {
+        console.error("❌ Deregistration Failed:", err);
+        event.reply('registration-error', err.message || "Unknown error during deregistration");
     }
-}
+});
 
 app.whenReady().then(() => {
   loadDatabase(); // 👈 LOAD DATA ON START
