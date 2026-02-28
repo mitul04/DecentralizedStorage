@@ -26,7 +26,7 @@ function getLocalIP() {
 
 // --- CONFIGURATION ---
 const SERVER_PORT = 4000;
-const COORDINATOR_URL = 'http://127.0.0.1:7000';
+const COORDINATOR_URL = 'http://127.0.0.1:3000';
 const JWT_SECRET = 'secret';
 const IPFS_NODE_URL = 'http://127.0.0.1:5001';
 
@@ -157,7 +157,10 @@ function startServer() {
   // --- API: RETRIEVE FILE 🔍 ---
   server.get('/retrieve/:cid', async (req: any, res: any) => {
     const cid = req.params.cid;
-    console.log(`⬇️ Retrieval Request for CID: ${cid}`);
+    
+    // 🚨 NEW: Log the IP address of the person requesting the file!
+    const requesterIP = req.ip || req.socket.remoteAddress;
+    console.log(`🚨 DOWNLOAD REQUEST | CID: ${cid.substring(0, 8)}... | FROM IP: ${requesterIP}`);
 
     try {
       if (!ipfs) throw new Error("IPFS not connected");
@@ -335,7 +338,7 @@ function startHeartbeat(walletAddress: string) {
     // Then run every 30 seconds
     heartbeatInterval = setInterval(() => {
         sendHeartbeat(walletAddress);
-    }, 40000); 
+    }, 30000); 
 }
 
 async function sendHeartbeat(address: string) {
