@@ -322,9 +322,15 @@
                         <div class="cid-value" id="modal-cid" style="word-break: break-all;">Qm...</div>
                     </div>
 
-                    <button class="btn-primary" style="margin-top: 24px; background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border);" onclick="closeModal()">
-                        Close
-                    </button>
+                    <div style="margin-top: 24px; display: flex; gap: 12px;">
+                        <button class="btn-primary" style="flex: 1;" onclick="downloadFile()">
+                            ⬇️ Download File
+                        </button>
+                        
+                        <button class="btn-primary" style="flex: 1; background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border);" onclick="closeModal()">
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -469,9 +475,102 @@
             }
         }
 
-        function uploadFile() {
-            // Note: In real logic, this calls main process. For now it triggers alert or placeholder logic
-             alert("File selected! To finish upload implementation, we need to bridge the Auth Token to this view.");
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+
+            // 1. Check if a file is actually selected
+            if (!file) {
+                alert("Please select a file first!");
+                return;
+            }
+
+            // 2. Visual feedback: Change the button to show it's working
+            const uploadBtn = document.querySelector('button[onclick="uploadFile()"]');
+            const originalText = uploadBtn.innerText;
+            uploadBtn.innerText = "⏳ Uploading to IPFS...";
+            uploadBtn.disabled = true;
+
+            // 3. Package the file for transit
+            // Notice how we use the name 'file' here? That matches your main.ts multer setup!
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // 4. Send it to your local Desktop Node Server (running on port 4000)
+                const response = await fetch('http://127.0.0.1:4000/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Success! The backend returns the IPFS CID as plain text
+                    const cid = await response.text();
+                    alert(`✅ File uploaded successfully!\n\nIPFS CID:\n${cid}`);
+                    
+                    // Clean up the UI
+                    fileInput.value = '';
+                    document.getElementById('file-details').style.display = 'none';
+                } else {
+                    // The backend returned a 400 or 500 error
+                    const errorText = await response.text();
+                    alert(`❌ Upload failed:\n${errorText}`);
+                }
+            } catch (error) {
+                console.error("Upload error:", error);
+                alert("❌ Could not connect to the local node server. Is it running on port 4000?");
+            } finally {
+                // Restore the button to its normal state
+                uploadBtn.innerText = originalText;
+                uploadBtn.disabled = false;
+            }
+        }
+
+        async function downloadFile() {
+            // 1. Grab the CID and filename from the modal's UI text
+            const cid = document.getElementById('modal-cid').innerText;
+            const filename = document.getElementById('modal-filename').innerText;
+            
+            if (!cid || cid === "Qm...") return;
+
+            // Visual feedback
+            const downloadBtn = document.querySelector('button[onclick="downloadFile()"]');
+            const originalText = downloadBtn.innerText;
+            downloadBtn.innerText = "⏳ Downloading...";
+            downloadBtn.disabled = true;
+
+            try {
+                // 2. Fetch the file stream from your Node.js backend
+                const response = await fetch(`http://127.0.0.1:4000/retrieve/${cid}`);
+                
+                if (!response.ok) throw new Error("Failed to fetch file from IPFS");
+
+                // 3. Convert the response into a downloadable Blob
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                // 4. Create an invisible link, click it to download, and clean it up
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename; // Forces the browser to save it with the original name
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                alert("✅ Download complete!");
+
+            } catch (error) {
+                console.error("Download Error:", error);
+                alert("❌ Error retrieving file. Make sure your IPFS daemon is running.");
+            } finally {
+                // Restore button state
+                downloadBtn.innerText = originalText;
+                downloadBtn.disabled = false;
+            }
         }
 
         // --- WALLET ACTIONS ---
