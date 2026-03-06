@@ -227,7 +227,10 @@ class _FilesScreenState extends State<FilesScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () async {
+                    // 1. Check Cache
                     File? file = await _storageService.getCachedFile(cid, fileName);
+
+                    // 2. If not found, Download
                     if (file == null) {
                         Navigator.pop(context); 
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -235,7 +238,14 @@ class _FilesScreenState extends State<FilesScreen> {
                         );
                         file = await _storageService.downloadFile(cid, fileName, _gatewayUrl!);
                     }
+
+                    // If the user closed the modal while downloading, STOP here to prevent crash.
+                    if (!context.mounted) return;
+
                     if (file != null) {
+                      // Close the modal first (optional, but cleaner UI)
+                      Navigator.pop(context);
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text("✅ File Ready: ${file.path.split('/').last}"))
                       );
