@@ -33,9 +33,11 @@ async function main() {
   const tokenAddress = await token.getAddress();
   console.log(`   - RewardToken: ${tokenAddress}`);
 
-  // 2. Deploy StorageNodeRegistry (Passes Token Address)
+  // 2. Deploy StorageNodeRegistry
   console.log("Deploying StorageNodeRegistry...");
-  const nodeRegistry = await ethers.deployContract("StorageNodeRegistry", [tokenAddress]);
+  // 🚨 NEW: We use Hardhat Account #1 (0x7099...) as the Coordinator Boss for local testing
+  const coordinatorSigner = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"; 
+  const nodeRegistry = await ethers.deployContract("StorageNodeRegistry", [tokenAddress, coordinatorSigner]);
   await nodeRegistry.waitForDeployment();
   const nodeRegistryAddress = await nodeRegistry.getAddress();
   console.log(`   - StorageNodeRegistry: ${nodeRegistryAddress}`);
@@ -53,7 +55,7 @@ async function main() {
   const serverIp = getLanIp();
   console.log(`💻 Detected Server IP: ${serverIp}`);
 
-  // --- 5. SAVE FOR BACKEND (Daemon) ---
+  // SAVE FOR BACKEND (Daemon / Hardhat Scripts)
   const backendAddresses = {
     serverIp: serverIp,
     rewardToken: tokenAddress,
@@ -61,15 +63,15 @@ async function main() {
     fileRegistry: fileRegistryAddress,
   };
   fs.writeFileSync("deployed-addresses.json", JSON.stringify(backendAddresses, null, 2));
-  console.log("📂 Saved 'deployed-addresses.json' (for Daemon)");
+  console.log("📂 Saved 'deployed-addresses.json' (for Hardhat scripts)");
 
-  // --- 6. SAVE FOR FRONTEND (Mobile App) ---
-  // This creates the Bridge so you don't have to copy-paste IPs manually
+  // --- SAVE FOR FRONTEND (Mobile App) ---
   const mobileConfig = {
     serverIp: serverIp,
-    rpcUrl: `http://${serverIp}:9545`,
+    rpcUrl: `http://${serverIp}:9545`, // Note: Default Hardhat RPC is usually 8545, double check yours!
     fileRegistry: fileRegistryAddress,
-    nodeRegistry: nodeRegistryAddress
+    nodeRegistry: nodeRegistryAddress,
+    rewardToken: tokenAddress
   };
 
   // Define path: Go up two levels (../) to find 'mobile/assets'
@@ -84,6 +86,21 @@ async function main() {
   fs.writeFileSync(mobileConfigPath, JSON.stringify(mobileConfig, null, 2));
   
   console.log(`📱 Saved 'app_config.json' to: ${mobileConfigPath}`);
+
+  // 🚨 NEW: AUTOMATICALLY EXPORT ABIS TO FLUTTER 🚨
+  console.log("📄 Exporting Smart Contract ABIs to Mobile App...");
+  
+  // 1. Read the compiled artifacts containing the abi array (using fs instead of require for TypeScript compatibility)
+  const tokenArtifact = JSON.parse(fs.readFileSync("./artifacts/contracts/RewardToken.sol/RewardToken.json", "utf8"));
+  const nodeArtifact = JSON.parse(fs.readFileSync("./artifacts/contracts/StorageNodeRegistry.sol/StorageNodeRegistry.json", "utf8"));
+  const fileArtifact = JSON.parse(fs.readFileSync("./artifacts/contracts/FileRegistry.sol/FileRegistry.json", "utf8"));
+
+  // 2. Write ONLY the 'abi' array directly into the Flutter assets folder
+  fs.writeFileSync(path.join(mobileAssetsDir, "reward_token_abi.json"), JSON.stringify(tokenArtifact.abi, null, 2));
+  fs.writeFileSync(path.join(mobileAssetsDir, "node_registry_abi.json"), JSON.stringify(nodeArtifact.abi, null, 2));
+  fs.writeFileSync(path.join(mobileAssetsDir, "file_registry_abi.json"), JSON.stringify(fileArtifact.abi, null, 2));
+  
+  console.log("✅ ABIs successfully synchronized with Flutter!");
   console.log("👉 Restart your Flutter app (press 'R') to apply these changes.");
 }
 
