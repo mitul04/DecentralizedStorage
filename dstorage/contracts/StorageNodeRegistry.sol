@@ -3,21 +3,35 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// 🚨 Import the Cryptography libraries to verify the Coordinator's signature
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+
+// We need an interface to call the mint function on your RewardToken
+interface IRewardToken {
+    function mintReward(address to, uint256 amount) external;
+}
 
 contract StorageNodeRegistry is Ownable {
-    
+    using ECDSA for bytes32;
+
     IERC20 public rewardToken;
     uint256 public stakeAmount = 500 * 10**18; // 500 Tokens stake required
+    
+    // 🚨 The designated "Boss" wallet that is allowed to sign paychecks
+    address public coordinatorSigner; 
 
-    // The "Resume" of a Node
+    // 🚨 A ledger to remember which checks have already been cashed
+    mapping(bytes => bool) public usedSignatures;
+
     struct NodeProfile {
-        string ipAddress;       // e.g., "/ip4/127.0.0.1/tcp/4001"
-        uint256 totalCapacity;  // Total space (in bytes)
-        uint256 freeCapacity;   // Available space (in bytes)
-        uint256 lastHeartbeat;  // Timestamp of last ping
-        uint256 reputation;     // Score 0-100
-        bool isMobile;          // True = Tier 2 (Mobile), False = Tier 1 (Desktop)
-        bool isRegistered;      // Is active?
+        string ipAddress;       
+        uint256 totalCapacity;  
+        uint256 freeCapacity;   
+        uint256 lastHeartbeat;  
+        uint256 reputation;     
+        bool isMobile;          
+        bool isRegistered;      
     }
 
     mapping(address => NodeProfile) public nodes;
@@ -28,26 +42,27 @@ contract StorageNodeRegistry is Ownable {
     event CapacityUpdated(address indexed nodeAddress, uint256 newFreeCapacity);
     event IPUpdated(address indexed nodeAddress, string newIp);
     event NodeDeregistered(address indexed nodeAddress);
+    event RewardClaimed(address indexed nodeAddress, uint256 amount);
 
-    constructor(address _tokenAddress) Ownable(msg.sender) {
+    // 🚨 UPDATED CONSTRUCTOR: Now accepts the Coordinator's Address!
+    constructor(address _tokenAddress, address _coordinatorSigner) Ownable(msg.sender) {
         require(_tokenAddress != address(0), "Invalid token address");
+        require(_coordinatorSigner != address(0), "Invalid signer address");
         rewardToken = IERC20(_tokenAddress);
+        coordinatorSigner = _coordinatorSigner; 
     }
 
-    // 1. Register with Capacity & Mobile Status
     function registerNode(string memory _ipAddress, uint256 _totalCapacity, bool _isMobile) external {
         require(!nodes[msg.sender].isRegistered, "Node already registered");
-
-        // Financial Security: Take the Stake
         bool success = rewardToken.transferFrom(msg.sender, address(this), stakeAmount);
         require(success, "Staking failed: Allowance too low or insufficient balance");
 
         nodes[msg.sender] = NodeProfile({
             ipAddress: _ipAddress,
             totalCapacity: _totalCapacity,
-            freeCapacity: _totalCapacity, // Starts empty
+            freeCapacity: _totalCapacity, 
             lastHeartbeat: block.timestamp,
-            reputation: 100, // Starts perfect
+            reputation: 100, 
             isMobile: _isMobile,
             isRegistered: true
         });
@@ -56,61 +71,63 @@ contract StorageNodeRegistry is Ownable {
         emit NodeRegistered(msg.sender, _isMobile, _totalCapacity);
     }
 
-    // Allows a node to update its IP without re-staking tokens
     function updateIpAddress(string memory _newIp) external {
         require(nodes[msg.sender].isRegistered, "Node not registered");
         nodes[msg.sender].ipAddress = _newIp;
-        nodes[msg.sender].lastHeartbeat = block.timestamp; // Acts as a ping too!
+        nodes[msg.sender].lastHeartbeat = block.timestamp; 
         emit IPUpdated(msg.sender, _newIp);
     }
 
-    // 2. The "I'm Alive" Pulse (Called daily)
-    function ping() external {
-        require(nodes[msg.sender].isRegistered, "Node not found");
-        nodes[msg.sender].lastHeartbeat = block.timestamp;
-        
-        // Simple Gamification: Every ping keeps reputation high
-        if(nodes[msg.sender].reputation < 100) {
-            nodes[msg.sender].reputation += 1; 
-        }
-
-        emit HeartbeatReceived(msg.sender, block.timestamp);
-    }
-
-    // 3. Update Storage (Called when file is added/removed)
     function updateCapacity(uint256 _usedBytes, bool _isAdding) external {
         require(nodes[msg.sender].isRegistered, "Node not found");
-        
         if (_isAdding) {
             require(nodes[msg.sender].freeCapacity >= _usedBytes, "Not enough space!");
             nodes[msg.sender].freeCapacity -= _usedBytes;
         } else {
-            // Freeing up space
             uint256 newFree = nodes[msg.sender].freeCapacity + _usedBytes;
             if (newFree > nodes[msg.sender].totalCapacity) {
                 newFree = nodes[msg.sender].totalCapacity;
             }
             nodes[msg.sender].freeCapacity = newFree;
         }
-
         emit CapacityUpdated(msg.sender, nodes[msg.sender].freeCapacity);
     }
 
-    // De-register node
     function deregisterNode() external {
         require(nodes[msg.sender].isRegistered, "Node not registered");
-        
-        // 1. Mark as unregistered so the network stops routing files here
         nodes[msg.sender].isRegistered = false;
-        
-        // 2. Refund the 500 STOR stake back to the node operator
         bool success = rewardToken.transfer(msg.sender, stakeAmount);
         require(success, "Stake refund failed");
-
         emit NodeDeregistered(msg.sender);
     }
 
     function getAllNodes() external view returns (address[] memory) {
         return nodeList;
+    }
+
+    // 💰 🚨 THE CRYPTOGRAPHIC PAYCHECK FUNCTION
+    function claimDailyReward(uint256 _amount, bytes memory _signature) external {
+        // require(nodes[msg.sender].isRegistered, "Node not registered"); // Commented out temporarily if mobile apps aren't "registered" nodes yet, uncomment for strict mode!
+        require(!usedSignatures[_signature], "This paycheck has already been cashed!");
+
+        // 1. Recreate the exact message the Coordinator supposedly signed
+        bytes32 messageHash = keccak256(abi.encodePacked(msg.sender, _amount));
+        
+        // 2. Format it to standard Ethereum signature standards
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+
+        // 3. Decrypt the signature to see WHO actually signed it
+        address recoveredSigner = ethSignedMessageHash.recover(_signature);
+
+        // 4. Verification: Was it our trusted Coordinator?
+        require(recoveredSigner == coordinatorSigner, "Fraud detected: Invalid signature!");
+
+        // 5. Mark check as cashed
+        usedSignatures[_signature] = true;
+
+        // 6. Pay the node!
+        IRewardToken(address(rewardToken)).mintReward(msg.sender, _amount);
+
+        emit RewardClaimed(msg.sender, _amount);
     }
 }
