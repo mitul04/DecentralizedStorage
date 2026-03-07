@@ -5,6 +5,7 @@ import 'screens/home_screen.dart';
 import 'screens/upload_screen.dart';
 import 'screens/files_screen.dart';
 import 'screens/rewards_screen.dart';
+import 'screens/wallet/wallet_gate_screen.dart';
 
 void main() {
   runApp(const DecloudApp());
@@ -22,7 +23,7 @@ class DecloudApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFFF8F9FE),
         useMaterial3: true,
       ),
-      home: const MainLayout(),
+      home: const WalletGateScreen(),
     );
   }
 }
