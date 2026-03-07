@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../services/blockchain_service.dart';
 
 class RewardsScreen extends StatefulWidget {
@@ -12,6 +14,10 @@ class _RewardsScreenState extends State<RewardsScreen> {
   final BlockchainService _service = BlockchainService();
   String _balance = "---";
   bool _isLoading = true;
+  bool _isClaiming = false; // 🚨 NEW: Loading state for the claim button
+
+  // 🚨 Make sure this matches your Coordinator's IP!
+  final String _coordinatorUrl = "http://127.0.0.1:3000"; 
 
   @override
   void initState() {
@@ -20,7 +26,6 @@ class _RewardsScreenState extends State<RewardsScreen> {
   }
 
   Future<void> _loadBalance() async {
-    // Fetch the real balance from blockchain
     await _service.init();
     final bal = await _service.getRewardTokenBalance();
     if (mounted) {
@@ -28,6 +33,51 @@ class _RewardsScreenState extends State<RewardsScreen> {
         _balance = bal;
         _isLoading = false;
       });
+    }
+  }
+
+  // 🚨 NEW: The Real Claim Logic!
+  Future<void> _claimRewards() async {
+    setState(() => _isClaiming = true);
+
+    try {
+      final String walletAddress = await _service.getWalletAddress();
+
+      // 1. Ask the Coordinator (The Boss) for the paycheck
+      final response = await http.post(
+        Uri.parse('$_coordinatorUrl/api/rewards/claim'), // Matches your Express route!
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'walletAddress': walletAddress}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(jsonDecode(response.body)['error'] ?? "Failed to get signature");
+      }
+
+      final payload = jsonDecode(response.body);
+      final String signature = payload['signature'];
+      final String amountWei = payload['amountWei'];
+      final String amountDisplay = payload['amountDisplay'];
+
+      // 2. Submit the signed check to the Smart Contract (The Bank)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⏳ Signature received! Submitting to Blockchain..."))
+      );
+
+      final txHash = await _service.claimDailyReward(amountWei, signature);
+
+      if (txHash != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("✅ Successfully claimed $amountDisplay DCLD!"), backgroundColor: Colors.green)
+        );
+        _loadBalance(); // Refresh the UI balance
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Claim Failed: $e"), backgroundColor: Colors.redAccent)
+      );
+    } finally {
+      if (mounted) setState(() => _isClaiming = false);
     }
   }
 
@@ -50,7 +100,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF4facfe), Color(0xFF00f2fe)], // Matches your UI
+                    colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -63,19 +113,14 @@ class _RewardsScreenState extends State<RewardsScreen> {
                   children: [
                     _isLoading 
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : Text("$_balance DEC", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+                      : Text("$_balance DCLD", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
                     const SizedBox(height: 8),
-                    const Text("≈ \$1,500.00 USD", style: TextStyle(color: Colors.white70)),
+                    const Text("Native Storage Token", style: TextStyle(color: Colors.white70)),
                     const SizedBox(height: 24),
                     
-                    // Claim Button
+                    // 🚨 REAL Claim Button
                     ElevatedButton(
-                      onPressed: () {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                           content: Text("💰 Rewards Claimed! (Simulation)"), 
-                           backgroundColor: Colors.green
-                         ));
-                      },
+                      onPressed: _isClaiming ? null : _claimRewards,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white.withOpacity(0.2),
                         foregroundColor: Colors.white,
@@ -83,7 +128,9 @@ class _RewardsScreenState extends State<RewardsScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                         padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
                       ),
-                      child: const Text("Claim Rewards"),
+                      child: _isClaiming 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text("Claim Rewards"),
                     )
                   ],
                 ),
@@ -110,64 +157,14 @@ class _RewardsScreenState extends State<RewardsScreen> {
                         Text("Total Earned This Month:", style: TextStyle(color: Colors.grey[600])),
                       ],
                     ),
-                    const Text("12.5 DEC", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.pinkAccent, fontSize: 16)),
+                    const Text("12.5 DCLD", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.pinkAccent, fontSize: 16)),
                   ],
                 ),
               ),
-
               const SizedBox(height: 30),
-
-              // --- 3. TRANSACTION HISTORY (Visual Mock) ---
-              const Text("Transaction History", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 15),
-
-              _buildTransactionItem("File Upload Reward", "Project_Brief_V2.pdf", "+ 6.2 DEC", true),
-              _buildTransactionItem("Storage Node Reward", "Hosting Data", "+ 88 DEC", true),
-              _buildTransactionItem("Network Fee", "Smart Contract Interaction", "- 0.5 DEC", false),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTransactionItem(String title, String subtitle, String amount, bool isPositive) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.shade50, blurRadius: 5, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isPositive ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-              color: isPositive ? Colors.green : Colors.orange,
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
-            ),
-          ),
-          Text(amount, style: TextStyle(
-            fontWeight: FontWeight.bold, 
-            color: isPositive ? Colors.green : Colors.redAccent
-          )),
-        ],
       ),
     );
   }
