@@ -155,11 +155,15 @@ class _FilesScreenState extends State<FilesScreen> {
                 ),
               ),
               
-              FutureBuilder<String?>(
-                future: _encryptionService.getKeyForCid(cid),
+              // 🚨 FIXED: Now expects a Map containing both Key and IV
+              FutureBuilder<Map<String, String>?>(
+                future: _encryptionService.getCredentialsForCid(cid),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData || snapshot.data == null) return const SizedBox.shrink();
-                  final String key = snapshot.data!;
+                  
+                  // Extract just the key string from the returned Map to show in the UI
+                  final String key = snapshot.data!['key']!;
+                  
                   return Container(
                     margin: const EdgeInsets.only(top: 10),
                     padding: const EdgeInsets.all(12),
