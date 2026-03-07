@@ -34,11 +34,11 @@ async function main() {
   console.log("⏳ Transaction sent. Waiting for confirmation...");
   await tx.wait();
 
-  console.log(`✅ Success! Sent 1000 STOR to ${nodeAddress}`);
+  console.log(`✅ Success! Sent 1000 DCLD to ${nodeAddress}`);
   
   // 6. Check new balance
   const balance = await token.balanceOf(nodeAddress);
-  console.log(`💰 New Node Balance: ${ethers.formatEther(balance)} STOR`);
+  console.log(`💰 New Node Balance: ${ethers.formatEther(balance)} DCLD`);
 }
 
 main().catch((error) => {
