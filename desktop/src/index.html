@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
@@ -7,7 +8,6 @@
     <title>DeCloud</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* ... (Keep your existing CSS exactly as is) ... */
         :root {
             --primary: #6C63FF;
             --primary-hover: #5a52d5;
@@ -19,15 +19,19 @@
             --border: #E2E8F0;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background: var(--bg); 
-            color: var(--text-main); 
-            height: 100vh; 
-            display: flex; 
-            overflow: hidden; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
         }
 
         /* --- SIDEBAR --- */
@@ -65,8 +69,16 @@
             font-size: 15px;
         }
 
-        .nav-item:hover { background: #EEF2FF; color: var(--primary); }
-        .nav-item.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(108, 99, 255, 0.2); }
+        .nav-item:hover {
+            background: #EEF2FF;
+            color: var(--primary);
+        }
+
+        .nav-item.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(108, 99, 255, 0.2);
+        }
 
         /* --- MAIN CONTENT --- */
         .main-content {
@@ -82,7 +94,11 @@
             margin-bottom: 32px;
         }
 
-        h2 { font-size: 24px; font-weight: 700; color: var(--text-main); }
+        h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
 
         .status-badge {
             background: #ECFDF5;
@@ -97,12 +113,18 @@
             border: 1px solid #D1FAE5;
         }
 
-        .status-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 0 2px #D1FAE5; }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 0 2px #D1FAE5;
+        }
 
         /* --- CARDS --- */
         .grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr); 
+            grid-template-columns: repeat(3, 1fr);
             gap: 24px;
             margin-bottom: 32px;
         }
@@ -115,58 +137,238 @@
             border: 1px solid var(--border);
         }
 
-        .card-label { color: var(--text-light); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-        .card-value { font-size: 28px; font-weight: 700; color: var(--text-main); }
-        .card-sub { font-size: 14px; color: var(--text-light); margin-top: 4px; }
+        .card-label {
+            color: var(--text-light);
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .card-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .card-sub {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
 
         /* --- TABLES & LISTS --- */
         .table-container {
-            background: white; border-radius: 16px; border: 1px solid var(--border); overflow: hidden;
-        }
-        .table-row {
-            display: flex; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border);
-            align-items: center; /* Vertically center items */
-        }
-        .table-row:last-child { border-bottom: none; }
-        .table-head { background: #F8FAFC; font-weight: 600; color: var(--text-light); font-size: 14px; }
-        
-        /* Make rows clickable for history */
-        .clickable-row { cursor: pointer; transition: background 0.1s; }
-        .clickable-row:hover { background: #F1F5F9; }
-
-        /* --- UPLOAD AREA --- */
-        .upload-area {
-            border: 2px dashed var(--border);
+            background: white;
             border-radius: 16px;
-            padding: 60px; /* Increased padding for larger feel */
-            text-align: center;
-            background: #F8FAFC;
-            cursor: pointer;
-            transition: all 0.2s;
+            border: 1px solid var(--border);
+            overflow: hidden;
         }
-        .upload-area:hover { border-color: var(--primary); background: #EEF2FF; }
+
+        .table-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+        }
+
+        .table-row:last-child {
+            border-bottom: none;
+        }
+
+        .table-head {
+            background: #F8FAFC;
+            font-weight: 600;
+            color: var(--text-light);
+            font-size: 14px;
+        }
 
         /* --- BUTTONS & INPUTS --- */
-        input[type="password"], input[type="text"], input[type="number"] {
-            width: 100%; padding: 16px; margin-bottom: 16px; 
-            border: 1px solid var(--border); border-radius: 12px; font-size: 16px;
-            outline: none; transition: border 0.2s;
+        input[type="password"],
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            transition: border 0.2s;
         }
-        input:focus { border-color: var(--primary); }
+
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        textarea {
+            width: 100%;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 15px;
+            outline: none;
+            transition: border 0.2s;
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+        }
 
         .btn-primary {
-            width: 100%; background: var(--primary); color: white; border: none; 
-            padding: 16px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
             transition: background 0.2s;
         }
-        .btn-primary:hover { background: var(--primary-hover); }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            width: 100%;
+            background: white;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
 
         .btn-refresh {
-            background: white; border: 1px solid var(--border); color: var(--text-main);
-            padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px;
-            display: flex; align-items: center; gap: 8px; transition: all 0.2s;
+            background: white;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
         }
-        .btn-refresh:hover { border-color: var(--primary); color: var(--primary); background: #F8FAFC; }
+
+        .btn-refresh:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: #F8FAFC;
+        }
+
+        /* --- WALLET CHOICE SCREEN --- */
+        .wallet-choice-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        /* --- MNEMONIC GRID --- */
+        .mnemonic-warning {
+            background: #FEF3C7;
+            border: 1px solid #FCD34D;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #92400E;
+            font-weight: 500;
+        }
+
+        .mnemonic-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #F8FAFC;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .mnemonic-word {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        .mnemonic-num {
+            color: var(--text-light);
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 18px;
+        }
+
+        .mnemonic-copy-btn {
+            background: #F1F5F9;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            display: block;
+            width: 100%;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+
+        .mnemonic-copy-btn:hover {
+            background: #EEF2FF;
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-confirm {
+            width: 100%;
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+
+        .btn-confirm:hover {
+            background: #059669;
+        }
 
         /* --- LOGS --- */
         .console-container {
@@ -178,66 +380,85 @@
             height: 300px;
             overflow-y: auto;
         }
-        .log-entry { margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
-        .log-time { color: #94A3B8; margin-right: 12px; }
 
-        /* --- MODAL (POPUP) --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.5); /* Dimmed background */
-            display: flex; justify-content: center; align-items: center;
-            z-index: 1000;
-            backdrop-filter: blur(4px);
+        .log-entry {
+            margin-bottom: 12px;
+            font-size: 14px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
         }
 
-        .modal-content {
-            background: white;
-            width: 500px;
-            padding: 32px;
-            border-radius: 20px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            animation: popIn 0.2s ease-out;
-        }
-
-        @keyframes popIn {
-            from { transform: scale(0.95); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
+        .log-time {
+            color: #94A3B8;
+            margin-right: 12px;
         }
 
         .detail-row {
-            display: flex; justify-content: space-between;
+            display: flex;
+            justify-content: space-between;
             padding: 12px 0;
             border-bottom: 1px solid var(--border);
         }
-        .detail-label { color: var(--text-light); font-weight: 500; }
-        .detail-value { font-weight: 600; color: var(--text-main); font-family: 'Inter', sans-serif; }
-        .cid-value { font-family: monospace; background: #F1F5F9; padding: 4px 8px; border-radius: 6px; color: var(--primary); font-size: 13px; }
 
-        .close-btn {
-            float: right; font-size: 24px; cursor: pointer; color: var(--text-light); line-height: 1;
+        .detail-label {
+            color: var(--text-light);
+            font-weight: 500;
         }
-        .close-btn:hover { color: var(--text-main); }
+
+        .detail-value {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        /* --- INLINE FEEDBACK --- */
+        .feedback-msg {
+            margin-top: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .feedback-error {
+            background: #FEF2F2;
+            color: #B91C1C;
+            border: 1px solid #FECACA;
+        }
+
+        .feedback-success {
+            background: #ECFDF5;
+            color: #065F46;
+            border: 1px solid #A7F3D0;
+        }
     </style>
 </head>
+
 <body>
 
     <nav class="sidebar">
         <div class="brand">🌨️ DeCloud</div>
-        <div class="nav-item active" onclick="switchTab('dashboard')">📊 Dashboard</div>
-        <div class="nav-item" onclick="switchTab('upload')">📂 File Upload</div>
-        <div class="nav-item" onclick="switchTab('rewards')">🎁 Rewards</div>
-        <div class="nav-item" onclick="switchTab('profile')">👤 Profile</div>
-        <div class="nav-item" onclick="switchTab('settings')">⚙️ Settings</div>
+        <div class="nav-item active" onclick="switchTab('dashboard', event)">📊 Dashboard</div>
+        <div class="nav-item" onclick="switchTab('wallet', event)">💰 Wallet</div>
+        <div class="nav-item" onclick="switchTab('profile', event)">👤 Profile</div>
+        <div class="nav-item" onclick="switchTab('settings', event)">⚙️ Settings</div>
     </nav>
 
     <main class="main-content">
-        
+
+        <!-- ═══ DASHBOARD ═══ -->
         <div id="view-dashboard">
             <div class="header-row">
                 <h2>Node Overview</h2>
-                <div class="status-badge" id="status-badge">
-                    <div class="status-dot" id="status-dot"></div>
-                    <span id="status-text">Connecting...</span>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div class="status-badge" id="status-badge">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span id="status-text">Connecting...</span>
+                    </div>
+                    <div class="status-badge" id="ws-badge" style="background: #F8FAFC; border-color: var(--border); color: var(--text-light);">
+                        <div class="status-dot" id="ws-dot" style="background: var(--text-light); box-shadow: none;"></div>
+                        <span id="ws-text">WS: Offline</span>
+                    </div>
                 </div>
             </div>
 
@@ -265,135 +486,163 @@
             </div>
         </div>
 
-        <div id="view-upload" style="display: none;">
+        <!-- ═══ WALLET ═══ -->
+        <div id="view-wallet" style="display: none;">
             <div class="header-row">
-                <h2>File Upload</h2>
+                <h2>Wallet</h2>
+                <button class="btn-refresh" id="wallet-refresh-btn" onclick="refreshBalance()" style="display: none;">🔄
+                    Refresh</button>
             </div>
-            
-            <div class="card" style="margin-bottom: 32px;"> 
-                <div class="card-label">Upload to Network</div>
-                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
-                    Select a file to encrypt, chunk, and distribute to the DeCloud network.
+
+            <!-- Setup: choose create or import -->
+            <div id="wallet-choice" class="card" style="max-width: 560px; margin: 0 auto;">
+                <div class="card-label">Connect Your Wallet</div>
+                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.6;">
+                    Create a new wallet or import an existing one using your 12-word mnemonic phrase.
                 </p>
-                
-                <div class="upload-area" onclick="document.getElementById('file-input').click()">
-                    <div style="font-size: 40px; margin-bottom: 16px;">☁️</div>
-                    <div style="font-weight: 600; color: var(--text-main);">Click to Select File</div>
-                    <div style="color: var(--text-light); font-size: 14px;">or drag and drop here</div>
+                <div class="wallet-choice-btns">
+                    <button class="btn-primary" id="btn-create-wallet" onclick="startCreateWallet()">
+                        ✨ Create New Wallet
+                    </button>
+                    <button class="btn-secondary" onclick="showImportForm()">
+                        🔑 Import Existing
+                    </button>
                 </div>
-                <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)">
-
-                <div id="file-details" style="display: none; margin-top: 24px; padding: 16px; background: #F1F5F9; border-radius: 12px;">
-                    <div style="font-weight: 600;" id="file-name">filename.jpg</div>
-                    <div style="font-size: 14px; color: var(--text-light);" id="file-size">2.4 MB</div>
-                </div>
-
-                <button class="btn-primary" style="margin-top: 24px;" onclick="uploadFile()">⬆️ Upload to Network</button>
+                <div id="choice-error" class="feedback-msg feedback-error"></div>
             </div>
 
-            <h3 style="margin-bottom: 16px;">Upload History</h3>
-            <div class="table-container">
-                <div class="table-row table-head">
-                    <div style="flex: 3;">File Name</div>
-                    <div style="flex: 1;">Size</div>
-                    <div style="flex: 1;">Date</div>
-                    <div style="flex: 1; text-align: right;">Status</div>
+            <!-- Mnemonic backup display (after create) -->
+            <div id="wallet-mnemonic" class="card" style="max-width: 560px; margin: 0 auto; display: none;">
+                <div class="card-label" style="margin-bottom: 12px;">✨ Wallet Created — Back Up Your Mnemonic</div>
+                <div class="mnemonic-warning">
+                    ⚠️ Write these 12 words down in order and store them somewhere safe.<br>
+                    <strong>They cannot be recovered if lost.</strong>
                 </div>
-            </div>
-
-            <div id="file-modal" class="modal-overlay" style="display: none;" onclick="closeModal(event)">
-                <div class="modal-content">
-                    <span class="close-btn" onclick="closeModal()">×</span>
-                    <h2 style="margin-bottom: 4px;" id="modal-filename">File Name</h2>
-                    <p style="color: var(--text-light); margin-bottom: 24px; font-size: 14px;">File Details & Network Status</p>
-                    
-                    <div class="detail-row">
-                        <span class="detail-label">File Size</span>
-                        <span class="detail-value" id="modal-size">0 MB</span>
-                    </div>
-                    
-                    <div class="detail-row">
-                        <span class="detail-label">Network Status</span>
-                        <span class="detail-value" style="color: var(--success);" id="modal-status">0/3 Nodes</span>
-                    </div>
-
-                    <div style="margin-top: 16px;">
-                        <div class="detail-label" style="margin-bottom: 8px;">IPFS CID (Content ID)</div>
-                        <div class="cid-value" id="modal-cid" style="word-break: break-all;">Qm...</div>
-                    </div>
-
-                    <div style="margin-top: 24px; display: flex; gap: 12px;">
-                        <button class="btn-primary" style="flex: 1;" onclick="downloadFile()">
-                            ⬇️ Download File
-                        </button>
-                        
-                        <button class="btn-primary" style="flex: 1; background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border);" onclick="closeModal()">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="view-rewards" style="display: none;">
-            <div class="header-row">
-                <h2>Rewards & Earnings</h2>
-                <button class="btn-refresh" onclick="refreshBalance()">🔄 Refresh</button>
-            </div>
-            <div class="grid">
-                <div class="card">
-                    <div class="card-label">Current Balance</div>
-                    <div class="card-value" id="rewards-stor">0.00</div>
-                    <div class="card-sub">DCLD Tokens</div>
-                </div>
-                <div class="card">
-                    <div class="card-label">Projected Monthly</div>
-                    <div class="card-value">150.00</div>
-                    <div class="card-sub">DCLD Tokens</div>
-                </div>
-            </div>
-            <h3 style="margin-bottom: 16px;">Transaction History</h3>
-            <div class="table-container">
-                <div class="table-row table-head">
-                    <div>Date</div>
-                    <div>Activity</div>
-                    <div>Amount</div>
-                    <div>Status</div>
-                </div>
-                <div class="table-row">
-                    <div>2026-02-10</div>
-                    <div>Storage Rent</div>
-                    <div style="color: var(--success);">+ 10.00 DCLD</div>
-                    <div>✅ Completed</div>
-                </div>
-                </div>
-        </div>
-
-        <div id="view-profile" style="display: none;">
-             <div class="header-row">
-                <h2>My Profile</h2>
-                <button class="btn-refresh" id="refresh-btn" onclick="refreshBalance()" style="display: none;">
-                    🔄 Refresh
+                <div class="mnemonic-grid" id="mnemonic-grid"></div>
+                <button class="mnemonic-copy-btn" onclick="copyMnemonic()">📋 Copy All Words</button>
+                <button class="btn-confirm" onclick="confirmMnemonicBackup()">
+                    ✅ I've Backed Up My Mnemonic — Continue
                 </button>
             </div>
 
-            <div class="card" id="wallet-login-card" style="max-width: 600px; margin: 0 auto;">
-                <div class="card-label">Connect Identity</div>
-                <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
-                    Enter your <strong>12-Word Secret Phrase</strong> or <strong>Private Key</strong> to authenticate this node. 
-                    <br><small>We do not store this secret permanently.</small>
+            <!-- Import form -->
+            <div id="wallet-import" class="card" style="max-width: 560px; margin: 0 auto; display: none;">
+                <div class="card-label" style="margin-bottom: 12px;">🔑 Import Wallet</div>
+                <p style="margin-bottom: 20px; color: var(--text-light); font-size: 14px; line-height: 1.6;">
+                    Enter your 12-word BIP-39 mnemonic phrase, separated by spaces.
                 </p>
-                <input type="password" id="private-key-input" placeholder="apple banana car... or 0x..." autocomplete="off">
-                <button id="connect-btn" class="btn-primary" onclick="connectWallet()">Connect Wallet</button>
+                <textarea id="mnemonic-input"
+                    placeholder="apple banana car door elephant fox grape hat iris jump kite lemon" autocomplete="off"
+                    autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+                <button class="btn-primary" id="btn-import" onclick="doImportWallet()">Import Wallet</button>
+                <button class="btn-secondary" style="margin-top: 10px;" onclick="cancelImport()">Cancel</button>
+                <div id="import-error" class="feedback-msg feedback-error"></div>
+            </div>
+            
+            <!-- Connected: balances + history -->
+            <div id="wallet-connected-view" style="display: none;">
+                <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 24px;">
+                    <div class="card">
+                        <div class="card-label">ETH Balance</div>
+                        <div class="card-value" id="wallet-eth">0.0000</div>
+                        <div class="card-sub">Sepolia Testnet</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">DCLD Balance</div>
+                        <div class="card-value" id="wallet-dcld">0.0000</div>
+                        <div class="card-sub">DeCloud Token</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-label" style="margin-bottom: 8px;">Wallet Address</div>
+                    <div id="wallet-address"
+                        style="font-size: 14px; font-family: monospace; color: var(--text-light); word-break: break-all; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                        0x...</div>
+                </div>
+
+                <h3 style="margin-bottom: 16px;">Transaction History</h3>
+                <div class="table-container">
+                    <div class="table-row table-head">
+                        <div>Date</div>
+                        <div>Activity</div>
+                        <div>Amount</div>
+                        <div>Status</div>
+                    </div>
+                    <div class="table-row">
+                        <div>2026-02-10</div>
+                        <div>Storage Rent</div>
+                        <div style="color: var(--success);">+ 10.00 DCLD</div>
+                        <div>✅ Completed</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PROFILE ═══ -->
+        <div id="view-profile" style="display: none;">
+            <div class="header-row">
+                <h2>My Profile</h2>
             </div>
 
-            <div id="wallet-stats" style="display: none;">
+            <!-- State A: No wallet connected -->
+            <div id="profile-no-wallet" class="card"
+                style="max-width: 560px; margin: 0 auto; text-align: center; padding: 48px 32px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">🔗</div>
+                <h3 style="margin-bottom: 12px; font-size: 20px;">First, connect your wallet to get started</h3>
+                <p style="color: var(--text-light); margin-bottom: 28px; line-height: 1.6;">
+                    You need a wallet to access your profile and node identity.
+                </p>
+                <button class="btn-primary" style="max-width: 240px; margin: 0 auto;"
+                    onclick="switchTab('wallet', event)">
+                    💰 Go to Wallet
+                </button>
+            </div>
+
+            <!-- State B: Wallet connected, not authenticated -->
+            <div id="profile-auth-prompt" style="max-width: 560px; margin: 0 auto; display: none;">
+                <div style="text-align: center; margin-bottom: 28px;">
+                    <div style="font-size: 40px; margin-bottom: 12px;">🔐</div>
+                    <h3 style="font-size: 20px; margin-bottom: 8px;">Log in or Register</h3>
+                    <p style="color: var(--text-light); font-size: 14px; line-height: 1.6;">
+                        Authenticate your wallet with the DeCloud network to access your profile.
+                    </p>
+                </div>
+
+                <!-- Login card -->
+                <div class="card" style="margin-bottom: 16px;">
+                    <div class="card-label" style="margin-bottom: 8px;">Existing Peer</div>
+                    <p style="color: var(--text-light); font-size: 14px; margin-bottom: 20px; line-height: 1.5;">
+                        Already registered on DeCloud? Sign in with your wallet.
+                    </p>
+                    <button class="btn-primary" id="btn-peer-login" onclick="doPeerLogin()">🔑 Login</button>
+                    <div id="login-error" class="feedback-msg feedback-error"></div>
+                </div>
+
+                <!-- Register card -->
+                <div class="card">
+                    <div class="card-label" style="margin-bottom: 8px;">New Peer</div>
+                    <p style="color: var(--text-light); font-size: 14px; margin-bottom: 20px; line-height: 1.5;">
+                        First time? Register your node as a storage peer.
+                    </p>
+                    <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Declared
+                        Storage Capacity (GB)</label>
+                    <input type="number" id="reg-capacity-auth" value="100" min="1" style="margin-bottom: 16px;">
+                    <button class="btn-primary" id="btn-peer-register" onclick="doPeerRegister()">📝 Register</button>
+                    <div id="register-error" class="feedback-msg feedback-error"></div>
+                </div>
+            </div>
+
+            <!-- State C: Authenticated — node identity -->
+            <div id="profile-identity" style="display: none;">
                 <div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--primary);">
                     <div class="header-row" style="margin-bottom: 16px;">
                         <div class="card-label">Node Identity</div>
-                        <div style="background: #EEF2FF; color: var(--primary); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">Active</div>
+                        <div
+                            style="background: #ECFDF5; color: var(--success); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                            ✅ Authenticated</div>
                     </div>
-                    <div style="display: flex; gap: 40px;">
+                    <div style="display: flex; gap: 40px; margin-bottom: 24px;">
                         <div>
                             <div class="card-sub">Reputation Score</div>
                             <div style="font-size: 20px; font-weight: 700;">💯 98/100</div>
@@ -403,46 +652,61 @@
                             <div style="font-size: 20px; font-weight: 700;">⏱️ 99.9%</div>
                         </div>
                     </div>
-                    <div style="margin-top: 24px;">
-                        <div class="card-label">Wallet Address</div>
-                        <div class="card-value" id="wallet-address" style="font-size: 16px; font-family: monospace; color: var(--text-light); word-break: break-all; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
-                            0x...
-                        </div>
-                    </div>
-                </div>
-                <div class="grid" style="grid-template-columns: 1fr 1fr;">
-                    <div class="card">
-                        <div class="card-label">ETH Balance</div>
-                        <div class="card-value" id="wallet-eth">0.000000</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">DCLD Balance</div>
-                        <div class="card-value" id="wallet-stor">0.000000</div>
-                    </div>
+                    <div class="card-label" style="margin-bottom: 8px;">Wallet Address</div>
+                    <div id="profile-address"
+                        style="font-size: 13px; font-family: monospace; color: var(--text-light); word-break: break-all; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 24px;">
+                        0x...</div>
+                    <button class="btn-secondary" style="border-color: #EF4444; color: #EF4444;" id="btn-peer-logout"
+                        onclick="doPeerLogout()">
+                        🚪 Logout from DeCloud
+                    </button>
                 </div>
             </div>
         </div>
 
+        <!-- ═══ SETTINGS ═══ -->
         <div id="view-settings" style="display: none;">
-             <div class="header-row">
-                <h2>Node Settings</h2>
+            <div class="header-row">
+                <h2>Settings</h2>
             </div>
+
+            <!-- Network section -->
+            <div class="card" style="max-width: 600px; margin-bottom: 24px;">
+                <div class="card-label">Network</div>
+                <p style="margin: 8px 0 20px; color: var(--text-light); font-size: 14px; line-height: 1.5;">
+                    URLs for the DeCloud API and relay server. Changes take effect on next connection.
+                </p>
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">API Base URL</label>
+                <input type="text" id="api-base-url" placeholder="http://api.decloud.network" style="margin-bottom: 4px;">
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Relay Server URL</label>
+                <input type="text" id="relay-base-url" placeholder="http://relay.decloud.network" style="margin-bottom: 12px;">
+                <button class="btn-primary" onclick="saveNetworkSettings()">💾 Save</button>
+                <div id="api-url-feedback" class="feedback-msg"></div>
+            </div>
+
+            <!-- Node registration section -->
             <div class="card" style="max-width: 600px;">
                 <div class="card-label">Node Registration</div>
                 <p style="margin: 8px 0 24px; color: var(--text-light); line-height: 1.5;">
-                    Register this device on the blockchain so users can find it.
+                    Register this device on the blockchain so clients can find it.
                 </p>
-                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Storage Capacity (GB)</label>
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Storage Capacity
+                    (GB)</label>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     <input type="number" id="reg-capacity" value="0" style="flex: 1; margin: 0;">
-                    <div style="padding: 16px; background: #F1F5F9; border-radius: 12px; font-weight: 600; color: var(--text-light);">GB</div>
+                    <div
+                        style="padding: 16px; background: #F1F5F9; border-radius: 12px; font-weight: 600; color: var(--text-light);">
+                        GB</div>
                 </div>
-                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Public Endpoint URL</label>
-                <input type="text" id="reg-endpoint" value="http://<IP>:<PORT>" style="margin-bottom: 24px; color: var(--text-light);">
+                <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px;">Public Endpoint
+                    URL</label>
+                <input type="text" id="reg-endpoint" value="http://<IP>:<PORT>"
+                    style="margin-bottom: 24px; color: var(--text-light);">
                 <button id="btn-register" class="btn-primary" onclick="registerNode()">
                     📡 Register Node on Blockchain
                 </button>
-                <button id="btn-deregister" class="btn-primary" style="background: #EF4444; margin-top: 12px; display: none;" onclick="deregisterNode()">
+                <button id="btn-deregister" class="btn-primary"
+                    style="background: #EF4444; margin-top: 12px; display: none;" onclick="deregisterNode()">
                     ⚠️ Deregister Node & Withdraw Stake
                 </button>
                 <p id="reg-status" style="margin-top: 15px; font-size: 14px; text-align: center; display: none;"></p>
@@ -454,378 +718,433 @@
     <script>
         const { ipcRenderer } = require('electron');
 
-        // --- NAVIGATION LOGIC ---
-        function switchTab(tabName) {
-            ['dashboard', 'upload', 'rewards', 'profile', 'settings'].forEach(view => {
+        // ─── App state ────────────────────────────────────────────────────────
+        let _storedMnemonic = null;       // held in memory only until backup confirmed
+        let _walletData = null;           // latest wallet-connected payload
+        let _isAuthenticated = false;     // DeCloud API auth result
+        let _mnemonicPending = false;     // true while backup screen is showing
+
+        // ─── Navigation ───────────────────────────────────────────────────────
+        function switchTab(tabName, evt) {
+            ['dashboard', 'wallet', 'profile', 'settings'].forEach(view => {
                 const el = document.getElementById(`view-${view}`);
                 if (el) el.style.display = 'none';
             });
             document.getElementById(`view-${tabName}`).style.display = 'block';
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            event.currentTarget.classList.add('active');
+            if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
+            if (tabName === 'settings') loadSettings();
         }
 
-        // --- FILE UPLOAD LOGIC ---
-        function handleFileSelect(input) {
-            const file = input.files[0];
-            if (file) {
-                document.getElementById('file-details').style.display = 'block';
-                document.getElementById('file-name').innerText = file.name;
-                document.getElementById('file-size').innerText = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+        // ─── Wallet tab: Create ───────────────────────────────────────────────
+        async function startCreateWallet() {
+            const btn = document.getElementById('btn-create-wallet');
+            btn.innerText = '⏳ Generating...';
+            btn.disabled = true;
+            hideError('choice-error');
+
+            try {
+                const { mnemonic } = await ipcRenderer.invoke('create-wallet');
+                _storedMnemonic = mnemonic;
+                _mnemonicPending = true;
+
+                const grid = document.getElementById('mnemonic-grid');
+                grid.innerHTML = mnemonic.split(' ').map((w, i) =>
+                    `<div class="mnemonic-word"><span class="mnemonic-num">${i + 1}.</span> ${w}</div>`
+                ).join('');
+
+                document.getElementById('wallet-choice').style.display = 'none';
+                document.getElementById('wallet-mnemonic').style.display = 'block';
+            } catch (err) {
+                showError('choice-error', 'Failed to create wallet: ' + (err.message || err));
+                btn.innerText = '✨ Create New Wallet';
+                btn.disabled = false;
             }
         }
 
-        async function uploadFile() {
-            const fileInput = document.getElementById('file-input');
-            const file = fileInput.files[0];
+        function copyMnemonic() {
+            if (!_storedMnemonic) return;
+            navigator.clipboard.writeText(_storedMnemonic).then(() => {
+                const btn = document.querySelector('.mnemonic-copy-btn');
+                btn.innerText = '✅ Copied!';
+                setTimeout(() => { btn.innerText = '📋 Copy All Words'; }, 2000);
+            });
+        }
 
-            // 1. Check if a file is actually selected
-            if (!file) {
-                alert("Please select a file first!");
+        function confirmMnemonicBackup() {
+            _storedMnemonic = null;
+            _mnemonicPending = false;
+            document.getElementById('wallet-mnemonic').style.display = 'none';
+
+            if (_walletData) {
+                showWalletConnected(_walletData);
+            } else {
+                document.getElementById('wallet-choice').style.display = 'block';
+                const btn = document.getElementById('btn-create-wallet');
+                btn.innerText = '✨ Create New Wallet';
+                btn.disabled = false;
+            }
+        }
+
+        // ─── Wallet tab: Import ───────────────────────────────────────────────
+        function showImportForm() {
+            document.getElementById('wallet-choice').style.display = 'none';
+            document.getElementById('wallet-import').style.display = 'block';
+        }
+
+        function cancelImport() {
+            document.getElementById('wallet-import').style.display = 'none';
+            document.getElementById('wallet-choice').style.display = 'block';
+            document.getElementById('mnemonic-input').value = '';
+            hideError('import-error');
+        }
+
+        async function doImportWallet() {
+            const mnemonic = document.getElementById('mnemonic-input').value.trim();
+            const btn = document.getElementById('btn-import');
+            hideError('import-error');
+
+            if (!mnemonic) { showError('import-error', 'Please enter your mnemonic phrase.'); return; }
+
+            btn.innerText = '⏳ Importing...';
+            btn.disabled = true;
+
+            try {
+                await ipcRenderer.invoke('import-wallet', mnemonic);
+                document.getElementById('mnemonic-input').value = '';
+                // wallet-connected fires from main → showWalletConnected called there
+            } catch (err) {
+                showError('import-error', err.message || 'Import failed. Check your mnemonic and try again.');
+                btn.innerText = 'Import Wallet';
+                btn.disabled = false;
+            }
+        }
+
+        // ─── Wallet tab: Connected view ───────────────────────────────────────
+        function showWalletConnected(data) {
+            document.getElementById('wallet-choice').style.display = 'none';
+            document.getElementById('wallet-mnemonic').style.display = 'none';
+            document.getElementById('wallet-import').style.display = 'none';
+            document.getElementById('wallet-connected-view').style.display = 'block';
+            document.getElementById('wallet-refresh-btn').style.display = 'flex';
+
+            document.getElementById('wallet-address').innerText = data.address;
+            document.getElementById('wallet-eth').innerText = data.eth;
+            document.getElementById('wallet-dcld').innerText = data.dcld;
+
+            // Sync registration state on settings tab
+            applyRegistrationState(data.isRegistered);
+        }
+
+        // ─── Profile tab state ────────────────────────────────────────────────
+        function updateProfileState() {
+            const noWallet = document.getElementById('profile-no-wallet');
+            const authPrompt = document.getElementById('profile-auth-prompt');
+            const identity = document.getElementById('profile-identity');
+
+            if (!_walletData) {
+                noWallet.style.display = 'block';
+                authPrompt.style.display = 'none';
+                identity.style.display = 'none';
+            } else if (!_isAuthenticated) {
+                noWallet.style.display = 'none';
+                authPrompt.style.display = 'block';
+                identity.style.display = 'none';
+            } else {
+                noWallet.style.display = 'none';
+                authPrompt.style.display = 'none';
+                identity.style.display = 'block';
+                document.getElementById('profile-address').innerText = _walletData.address;
+            }
+        }
+
+        // ─── Profile: Login / Register ────────────────────────────────────────
+        async function doPeerLogin() {
+            const btn = document.getElementById('btn-peer-login');
+            hideError('login-error');
+            btn.innerText = '⏳ Logging in...';
+            btn.disabled = true;
+            try {
+                await ipcRenderer.invoke('peer-login');
+                // auth-success event will fire → updateProfileState()
+            } catch (err) {
+                showError('login-error', err.message || 'Login failed. Are you registered?');
+                btn.innerText = '🔑 Login';
+                btn.disabled = false;
+            }
+        }
+
+        async function doPeerRegister() {
+            const btn = document.getElementById('btn-peer-register');
+            const capacityInput = document.getElementById('reg-capacity-auth');
+            const declaredCapacityGB = parseInt(capacityInput.value, 10);
+            hideError('register-error');
+
+            if (!declaredCapacityGB || declaredCapacityGB < 1) {
+                showError('register-error', 'Please enter a valid capacity (minimum 1 GB).');
                 return;
             }
 
-            // 2. Visual feedback: Change the button to show it's working
-            const uploadBtn = document.querySelector('button[onclick="uploadFile()"]');
-            const originalText = uploadBtn.innerText;
-            uploadBtn.innerText = "⏳ Uploading to IPFS...";
-            uploadBtn.disabled = true;
-
-            // 3. Package the file for transit
-            // Notice how we use the name 'file' here? That matches your main.ts multer setup!
-            const formData = new FormData();
-            formData.append('file', file);
-
+            btn.innerText = '⏳ Registering...';
+            btn.disabled = true;
             try {
-                // 4. Send it to your local Desktop Node Server (running on port 4000)
-                const response = await fetch('http://127.0.0.1:4000/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    // Success! The backend returns the IPFS CID as plain text
-                    const cid = await response.text();
-                    alert(`✅ File uploaded successfully!\n\nIPFS CID:\n${cid}`);
-                    
-                    // Clean up the UI
-                    fileInput.value = '';
-                    document.getElementById('file-details').style.display = 'none';
-                } else {
-                    // The backend returned a 400 or 500 error
-                    const errorText = await response.text();
-                    alert(`❌ Upload failed:\n${errorText}`);
-                }
-            } catch (error) {
-                console.error("Upload error:", error);
-                alert("❌ Could not connect to the local node server. Is it running on port 4000?");
-            } finally {
-                // Restore the button to its normal state
-                uploadBtn.innerText = originalText;
-                uploadBtn.disabled = false;
+                await ipcRenderer.invoke('peer-register', { declaredCapacityGB });
+                // auth-success event will fire → updateProfileState()
+            } catch (err) {
+                showError('register-error', err.message || 'Registration failed. Try again.');
+                btn.innerText = '📝 Register';
+                btn.disabled = false;
             }
         }
 
-        async function downloadFile() {
-            // 1. Grab the CID and filename from the modal's UI text
-            const cid = document.getElementById('modal-cid').innerText;
-            const filename = document.getElementById('modal-filename').innerText;
-            
-            if (!cid || cid === "Qm...") return;
-
-            // Visual feedback
-            const downloadBtn = document.querySelector('button[onclick="downloadFile()"]');
-            const originalText = downloadBtn.innerText;
-            downloadBtn.innerText = "⏳ Downloading...";
-            downloadBtn.disabled = true;
-
+        async function doPeerLogout() {
+            const btn = document.getElementById('btn-peer-logout');
+            btn.innerText = '⏳ Logging out...';
+            btn.disabled = true;
             try {
-                // 2. Fetch the file stream from your Node.js backend
-                const response = await fetch(`http://127.0.0.1:4000/retrieve/${cid}`);
-                
-                if (!response.ok) throw new Error("Failed to fetch file from IPFS");
-
-                // 3. Convert the response into a downloadable Blob
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                
-                // 4. Create an invisible link, click it to download, and clean it up
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = filename; // Forces the browser to save it with the original name
-                
-                document.body.appendChild(a);
-                a.click();
-                
-                window.URL.revokeObjectURL(url);
-                a.remove();
-                
-                alert("✅ Download complete!");
-
-            } catch (error) {
-                console.error("Download Error:", error);
-                alert("❌ Error retrieving file. Make sure your IPFS daemon is running.");
-            } finally {
-                // Restore button state
-                downloadBtn.innerText = originalText;
-                downloadBtn.disabled = false;
+                await ipcRenderer.invoke('peer-logout');
+            } catch (err) {
+                console.error('Logout error:', err);
+                btn.innerText = '🚪 Logout from DeCloud';
+                btn.disabled = false;
             }
         }
 
-        // --- WALLET ACTIONS ---
-        function connectWallet() {
-          const input = document.getElementById('private-key-input');
-          const btn = document.getElementById('connect-btn');
-          
-          let secret = input.value.trim(); 
-
-          if (!secret) {
-              alert("Please enter your 12-word phrase or private key.");
-              return;
-          }
-
-          if (secret.includes(" ")) {
-              const wordCount = secret.split(/\s+/).length;
-              if (wordCount < 12) {
-                  alert(`Phrase only has ${wordCount} words. Standard phrases are 12 or 24 words.`);
-                  return;
-              }
-          } else {
-              if (!secret.startsWith("0x") && secret.length === 64) {
-                  secret = "0x" + secret;
-              }
-          }
-          
-          btn.innerText = "Connecting...";
-          btn.disabled = true;
-          ipcRenderer.send('connect-wallet', secret);
-        }
-
+        // ─── Balance Refresh ──────────────────────────────────────────────────
         function refreshBalance() {
-            const btns = document.querySelectorAll('.btn-refresh');
-            btns.forEach(b => b.innerText = "⏳ Updating...");
+            document.getElementById('wallet-refresh-btn').innerText = '⏳ Updating...';
             ipcRenderer.send('refresh-balance');
         }
 
-        // --- REGISTRATION LOGIC ---
+        // ─── Settings ─────────────────────────────────────────────────────────
+        async function loadSettings() {
+            try {
+                const { apiBaseUrl, relayBaseUrl } = await ipcRenderer.invoke('get-settings');
+                document.getElementById('api-base-url').value = apiBaseUrl || '';
+                document.getElementById('relay-base-url').value = relayBaseUrl || '';
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+            }
+        }
+
+        async function saveNetworkSettings() {
+            const apiBaseUrl   = document.getElementById('api-base-url').value;
+            const relayBaseUrl = document.getElementById('relay-base-url').value;
+            const feedback     = document.getElementById('api-url-feedback');
+
+            if (!apiBaseUrl) {
+                feedback.className = 'feedback-msg feedback-error';
+                feedback.innerText = 'API Base URL is required.';
+                feedback.style.display = 'block';
+                return;
+            }
+
+            try {
+                await ipcRenderer.invoke('save-settings', { apiBaseUrl, relayBaseUrl });
+                feedback.className = 'feedback-msg feedback-success';
+                feedback.innerText = '✅ Saved!';
+                feedback.style.display = 'block';
+                setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+            } catch (err) {
+                feedback.className = 'feedback-msg feedback-error';
+                feedback.innerText = 'Failed to save: ' + (err.message || err);
+                feedback.style.display = 'block';
+            }
+        }
+
+        // ─── Node Registration ────────────────────────────────────────────────
+        function applyRegistrationState(isRegistered) {
+            const btnReg = document.getElementById('btn-register');
+            const btnDereg = document.getElementById('btn-deregister');
+            const status = document.getElementById('reg-status');
+
+            if (isRegistered) {
+                btnReg.innerText = '🔄 Update IP on Blockchain';
+                btnReg.style.background = '#3B82F6';
+                btnReg.disabled = false;
+                btnReg.onclick = updateIpOnChain;
+                btnDereg.style.display = 'block';
+                btnDereg.disabled = false;
+                status.style.display = 'block';
+                status.style.color = '#3B82F6';
+                status.innerText = 'Node is registered. You can update your IP above.';
+            } else {
+                btnReg.innerText = '📡 Register Node on Blockchain';
+                btnReg.style.background = 'var(--primary)';
+                btnReg.disabled = false;
+                btnReg.onclick = registerNode;
+                btnDereg.style.display = 'none';
+                status.style.display = 'none';
+            }
+        }
+
         function registerNode() {
             const capacity = document.getElementById('reg-capacity').value;
             const endpoint = document.getElementById('reg-endpoint').value;
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
 
-            if (!capacity || !endpoint) {
-                alert("Please fill in all fields.");
-                return;
-            }
+            if (!capacity || !endpoint) { alert('Please fill in all fields.'); return; }
 
-            btn.innerText = "⏳ Registering...";
+            btn.innerText = '⏳ Registering...';
             btn.disabled = true;
             status.style.display = 'block';
             status.style.color = 'orange';
-            status.innerText = "Sending transaction to Blockchain...";
+            status.innerText = 'Sending transaction to blockchain...';
 
             ipcRenderer.send('register-node', { capacity, endpoint });
         }
 
-        // --- MODAL LOGIC ---
-        function openFileDetails(name, size, cid, nodes) {
-            // 1. Populate Data
-            document.getElementById('modal-filename').innerText = name;
-            document.getElementById('modal-size').innerText = size;
-            document.getElementById('modal-cid').innerText = cid;
-            document.getElementById('modal-status').innerText = nodes;
-
-            // 2. Color Logic for Status
-            const statusEl = document.getElementById('modal-status');
-            if(nodes.includes('Active') || nodes.includes('3/3')) { // Adjusted logic for "Active" status
-                statusEl.style.color = '#10B981'; // Green
-                statusEl.innerHTML = `🟢 ${nodes}`;
-            } else {
-                statusEl.style.color = '#F59E0B'; // Orange
-                statusEl.innerHTML = `🟠 ${nodes}`;
-            }
-
-            // 3. Show Modal
-            document.getElementById('file-modal').style.display = 'flex';
-        }
-
-        function closeModal(event) {
-            // Close if clicked on overlay (background) OR the close button
-            if (!event || event.target.id === 'file-modal' || event.target.className === 'close-btn' || event.target.tagName === 'BUTTON') {
-                document.getElementById('file-modal').style.display = 'none';
-            }
-        }
-
-        // --- IP UPDATE LOGIC (NEW) ---
         function updateIpOnChain() {
             const endpoint = document.getElementById('reg-endpoint').value;
-            if (!endpoint) {
-                alert("Please enter a new endpoint URL.");
-                return;
-            }
+            if (!endpoint) { alert('Please enter a new endpoint URL.'); return; }
 
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
 
-            btn.innerText = "⏳ Updating IP...";
+            btn.innerText = '⏳ Updating IP...';
             btn.disabled = true;
             status.style.display = 'block';
             status.style.color = 'orange';
-            status.innerText = "Sending update transaction to Blockchain...";
+            status.innerText = 'Sending update transaction to blockchain...';
 
             ipcRenderer.send('update-ip', { endpoint });
         }
 
-        // --- DEREGISTER LOGIC ---
         function deregisterNode() {
-            if (confirm("Are you sure you want to deregister? Your node will go offline and your 500 DCLD stake will be returned to your wallet.")) {
+            if (confirm('Are you sure you want to deregister? Your node will go offline and your 500 DCLD stake will be returned to your wallet.')) {
                 const btn = document.getElementById('btn-deregister');
-                btn.innerText = "⏳ Deregistering...";
+                btn.innerText = '⏳ Deregistering...';
                 btn.disabled = true;
-                
                 ipcRenderer.send('deregister-node');
             }
         }
 
-        // --- LISTENERS ---
-        
-        // 🚨 NEW: Receive History Data from Main Process
-        ipcRenderer.on('update-history', (event, files) => {
-            const tableContainer = document.querySelector('.table-container');
-            
-            // Keep the header row
-            const headerHtml = `
-                <div class="table-row table-head">
-                    <div style="flex: 3;">File Name</div>
-                    <div style="flex: 1;">Size</div>
-                    <div style="flex: 1;">Date</div>
-                    <div style="flex: 1; text-align: right;">Status</div>
-                </div>`;
+        // ─── UI Helpers ───────────────────────────────────────────────────────
+        function showError(id, msg) {
+            const el = document.getElementById(id);
+            el.innerText = msg;
+            el.style.display = 'block';
+        }
 
-            // Generate rows for each file
-            const rowsHtml = files.map(file => `
-                <div class="table-row clickable-row" 
-                     onclick="openFileDetails('${file.name}', '${file.size}', '${file.cid}', '${file.status}')">
-                    <div style="flex: 3; font-weight: 500; display: flex; align-items: center; gap: 10px;">
-                        <span>📄</span> ${file.name}
-                    </div>
-                    <div style="flex: 1;">${file.size}</div>
-                    <div style="flex: 1; color: var(--text-light);">${file.date}</div>
-                    <div style="flex: 1; text-align: right; color: var(--success); font-weight: 600;">
-                        ✅ ${file.status}
-                    </div>
-                </div>
-            `).join('');
+        function hideError(id) {
+            document.getElementById(id).style.display = 'none';
+        }
 
-            // Update the table
-            tableContainer.innerHTML = headerHtml + rowsHtml;
+        // ─── IPC Listeners ────────────────────────────────────────────────────
+
+        ipcRenderer.on('wallet-connected', (event, data) => {
+            _walletData = data;
+            updateProfileState();
+
+            if (_mnemonicPending) return; // keep backup screen visible
+            showWalletConnected(data);
         });
 
-        // 🚨 NEW: Update Dashboard Counters
-        ipcRenderer.on('update-dashboard', (event, stats) => {
-            // Update "Files Hosted"
-            const filesCountEl = document.getElementById('dashboard-files');
-            if(filesCountEl) filesCountEl.innerText = stats.files;
+        ipcRenderer.on('auth-success', () => {
+            _isAuthenticated = true;
+            updateProfileState();
+        });
 
-            // Update "Storage Used"
-            const storageEl = document.getElementById('dashboard-storage');
-            if(storageEl) storageEl.innerText = stats.storage + " MB";
+        ipcRenderer.on('auth-failed', () => {
+            _isAuthenticated = false;
+            updateProfileState();
+            const logoutBtn = document.getElementById('btn-peer-logout');
+            if (logoutBtn) {
+                logoutBtn.innerText = '🚪 Logout from DeCloud';
+                logoutBtn.disabled = false;
+            }
         });
 
         ipcRenderer.on('registration-success', (event, txHash) => {
             const btnReg = document.getElementById('btn-register');
-            const btnDereg = document.getElementById('btn-deregister'); 
+            const btnDereg = document.getElementById('btn-deregister');
             const status = document.getElementById('reg-status');
-            
-            // 1. Morph the Register button into the Update IP button
-            btnReg.innerText = "🔄 Update IP on Blockchain";
-            btnReg.style.background = "#3B82F6"; // Blue
-            btnReg.disabled = false; 
-            btnReg.onclick = updateIpOnChain; 
-            
-            // 2. Reveal the Deregister button
-            btnDereg.style.display = 'block'; 
-            btnDereg.innerText = "⚠️ Deregister Node & Withdraw Stake";
+
+            btnReg.innerText = '🔄 Update IP on Blockchain';
+            btnReg.style.background = '#3B82F6';
+            btnReg.disabled = false;
+            btnReg.onclick = updateIpOnChain;
+            btnDereg.style.display = 'block';
             btnDereg.disabled = false;
-            
-            // 3. Show Success Status
             status.style.display = 'block';
             status.style.color = '#3B82F6';
-            status.innerHTML = `✅ Successfully Registered! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span><br>You can update your IP above.`;
+            status.innerHTML = `✅ Registered! Tx: <span style="font-family:monospace">${txHash.substring(0, 10)}...</span>`;
         });
 
         ipcRenderer.on('registration-error', (event, errorMsg) => {
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
-            btn.innerText = "📡 Register Node on Blockchain"; 
+            btn.innerText = '📡 Register Node on Blockchain';
             btn.disabled = false;
             status.style.color = 'red';
-            status.innerText = "Error: " + errorMsg;
+            status.innerText = 'Error: ' + errorMsg;
         });
 
-        ipcRenderer.on('wallet-connected', (event, data) => {
-            document.getElementById('wallet-login-card').style.display = 'none';
-            document.getElementById('wallet-stats').style.display = 'block';
-            document.getElementById('refresh-btn').style.display = 'flex';
-            document.getElementById('refresh-btn').innerText = "🔄 Refresh";
-
-            document.getElementById('wallet-address').innerText = data.address;
-            document.getElementById('wallet-eth').innerText = data.eth;
-            document.getElementById('wallet-stor').innerText = data.stor;
-
-            const btn = document.getElementById('btn-register');
-            const btnDereg = document.getElementById('btn-deregister');
-            const status = document.getElementById('reg-status');
-            
-            // 🚨 MODIFIED: Change button behavior based on registration status
-            if (data.isRegistered) {
-                // Node is already registered! Turn it into an Update button.
-                btn.innerText = "🔄 Update IP on Blockchain";
-                btn.style.background = "#3B82F6"; // Blue color for update
-                btn.disabled = false; 
-                btn.onclick = updateIpOnChain; // Point to our new function!
-                
-                btnDereg.style.display = 'block'; // 👈 Show Deregister button
-                btnDereg.innerText = "⚠️ Deregister Node & Withdraw Stake";
-                btnDereg.disabled = false;
-
-                status.style.display = 'block';
-                status.style.color = '#3B82F6';
-                status.innerText = "Node is registered. You can update your IP above.";
-            } else {
-                // Not registered. Keep default behavior.
-                btn.innerText = "📡 Register Node on Blockchain";
-                btn.style.background = "var(--primary)";
-                btn.disabled = false;
-                btn.onclick = registerNode; // Point to original register function
-                
-                btnDereg.style.display = 'none'; // 👈 Hide Deregister button  
-
-                status.style.display = 'none';
-            }
-        });
-
-        // 🚨 NEW: Listen for successful IP updates
         ipcRenderer.on('update-success', (event, txHash) => {
             const btn = document.getElementById('btn-register');
             const status = document.getElementById('reg-status');
-            
-            btn.innerText = "🔄 Update IP on Blockchain";
+            btn.innerText = '🔄 Update IP on Blockchain';
             btn.disabled = false;
-            
             status.style.color = 'green';
-            status.innerHTML = `✅ IP Successfully Updated! Tx: <span style="font-family:monospace">${txHash.substring(0,10)}...</span>`;
+            status.innerHTML = `✅ IP Updated! Tx: <span style="font-family:monospace">${txHash.substring(0, 10)}...</span>`;
         });
 
-        // 🚨 NEW: Listen for successful deregistration
-        ipcRenderer.on('deregister-success', (event, txHash) => {
-            alert("✅ Node successfully deregistered! Your 500 DCLD stake has been returned.");
-            // Refreshing the balance will re-trigger 'wallet-connected'
-            // with isRegistered: false, automatically resetting the UI!
-            refreshBalance(); 
+        ipcRenderer.on('deregister-success', () => {
+            alert('✅ Node deregistered. Your 500 DCLD stake has been returned.');
+            refreshBalance();
         });
+
+        ipcRenderer.on('ws-status', (event, data) => {
+            const badge = document.getElementById('ws-badge');
+            const dot   = document.getElementById('ws-dot');
+            const text  = document.getElementById('ws-text');
+
+            const styles = {
+                connecting:   { bg: '#FEF3C7', border: '#FCD34D', color: '#92400E', dot: '#F59E0B', label: 'WS: Connecting...' },
+                connected:    { bg: '#ECFDF5', border: '#D1FAE5', color: '#065F46', dot: '#10B981', label: `WS: Connected` },
+                disconnected: { bg: '#F8FAFC', border: '#E2E8F0', color: '#64748B', dot: '#94A3B8', label: 'WS: Offline' },
+                'auth-failed':{ bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C', dot: '#EF4444', label: 'WS: Auth Failed' },
+            };
+
+            const s = styles[data.status] ?? styles['disconnected'];
+            badge.style.background   = s.bg;
+            badge.style.borderColor  = s.border;
+            badge.style.color        = s.color;
+            dot.style.background     = s.dot;
+            dot.style.boxShadow      = data.status === 'connected' ? `0 0 0 2px ${s.border}` : 'none';
+            text.innerText           = data.status === 'connected' && data.peerId
+                ? `WS: Connected`
+                : s.label;
+        });
+
+        // ─── Chunk / Storage events ───────────────────────────────────────────
+
+        ipcRenderer.on('peer:storage', (event, data) => {
+            const { usedBytes, chunkCount } = data;
+
+            const el = document.getElementById('dashboard-files');
+            if (el) el.innerText = chunkCount;
+
+            const storEl = document.getElementById('dashboard-storage');
+            if (storEl) storEl.innerText = formatBytes(usedBytes);
+        });
+
+        ipcRenderer.on('peer:assignment', (event, data) => {
+            const { fileId, chunkIndexes } = data;
+            const logs = document.getElementById('console-logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span> 📦 Chunk assignment — fileId: <span style="color:#60A5FA;font-family:monospace">${fileId.slice(0, 8)}…</span> chunks: [${chunkIndexes}]`;
+            logs.prepend(entry);
+        });
+
+        function formatBytes(bytes) {
+            if (bytes < 1024)           return bytes + ' B';
+            if (bytes < 1024 * 1024)    return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 ** 3)      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            return (bytes / 1024 ** 3).toFixed(2) + ' GB';
+        }
 
         ipcRenderer.on('server-status', (event, data) => {
             const statusText = document.getElementById('status-text');
@@ -833,12 +1152,12 @@
             const logs = document.getElementById('console-logs');
 
             statusText.innerText = data.status;
-            let colorHex = '#10B981'; 
+            let colorHex = '#10B981';
             if (data.color === 'red') colorHex = '#EF4444';
             if (data.color === 'orange') colorHex = '#F59E0B';
-            
+
             statusDot.style.background = colorHex;
-            statusDot.style.boxShadow = `0 0 0 2px ${colorHex}33`; 
+            statusDot.style.boxShadow = `0 0 0 2px ${colorHex}33`;
             statusText.style.color = colorHex;
 
             if (data.status.includes('Stored') || data.status.includes('Processing')) {
@@ -846,14 +1165,12 @@
                 const newLog = document.createElement('div');
                 newLog.className = 'log-entry';
                 let message = data.status;
-                if (data.cid) {
-                    message += ` <span style="color: #60A5FA;">[CID: ${data.cid.substring(0, 10)}...]</span>`;
-                    // Note: Dashboard file count update logic removed from here as it's now handled by update-dashboard event
-                }
+                if (data.cid) message += ` <span style="color:#60A5FA">[CID: ${data.cid.substring(0, 10)}...]</span>`;
                 newLog.innerHTML = `<span class="log-time">${now}</span> ${message}`;
                 logs.prepend(newLog);
             }
         });
     </script>
 </body>
+
 </html>
