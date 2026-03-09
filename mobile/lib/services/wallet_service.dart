@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:web3dart/web3dart.dart';
 import 'mnemonic_service.dart';
 //import 'keystore_service.dart';
@@ -38,6 +39,25 @@ class WalletService {
     await SecureStorage.write('wallet_address', address.hex);
 
     return address;
+  }
+
+  // Signs a raw string message (nonce) using the stored private key
+  static Future<String> signMessage(String message) async {
+    // 1. Retrieve the private key from secure storage
+    final String? privKeyHex = await SecureStorage.read('wallet_private_key');
+    if (privKeyHex == null) throw Exception("No wallet found on device");
+
+    // 2. Convert hex string to EthPrivateKey object
+    final EthPrivateKey credentials = EthPrivateKey.fromHex(privKeyHex);
+
+    // 3. Sign the message (this automatically applies the Ethereum prefix: 
+    // "\x19Ethereum Signed Message:\n" + len(msg))
+    final Uint8List signature = credentials.signPersonalMessageToUint8List(
+      Uint8List.fromList(message.codeUnits),
+    );
+
+    // 4. Return as a hex string for the backend
+    return bytesToHex(signature, include0x: true);
   }
 }
 
