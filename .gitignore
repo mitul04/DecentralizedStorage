@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build Output (Compiled files)
+dist/
+
+# Environment Variables (Security)
+.env
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
