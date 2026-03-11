@@ -36,8 +36,6 @@ type RelayState =
     | 'waiting_chunk_end'
     | 'done';
 
-// Relay protocol state machine states — download (peer sends)
-type DownloadRelayState = 'waiting_paired' | 'done';
 
 interface ChunkMeta {
     chunkIndex: number;
@@ -183,7 +181,9 @@ function cancelAssignment(token: string): void {
 
 function handleDownloadRequest(token: string, fileId: string, chunkIndex: number, relayUrl?: string): void {
     console.log(`📤 Download request — fileId=${fileId} chunk=${chunkIndex} token=${token.slice(0, 8)}...`);
-    connectToRelayForDownload(token, fileId, chunkIndex, relayUrl);
+    connectToRelayForDownload(token, fileId, chunkIndex, relayUrl).catch((err: Error) => {
+        console.warn(`⚠️ Download relay failed — chunk=${chunkIndex} token=${token.slice(0, 8)}: ${err.message}`);
+    });
 }
 
 // ─── Relay connection ─────────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ async function connectToRelay(token: string, fileId: string, relayUrl?: string):
 const DOWNLOAD_BLOCK_SIZE  = 64 * 1024; // 64 KiB per binary frame
 const PAIRED_TIMEOUT_MS    = 60_000;
 
-function connectToRelayForDownload(token: string, fileId: string, chunkIndex: number, relayUrl?: string): void {
+async function connectToRelayForDownload(token: string, fileId: string, chunkIndex: number, relayUrl?: string): Promise<void> {
     const filePath = chunkFilePath(fileId, chunkIndex);
     if (!fs.existsSync(filePath)) {
         console.warn(`⚠️ Download: chunk not found on disk — ${filePath}`);
@@ -362,52 +362,59 @@ function connectToRelayForDownload(token: string, fileId: string, chunkIndex: nu
     console.log(`🔌 Relay (↑ send): → ${base}  chunk=${chunkIndex}  token=${token.slice(0, 8)}...`);
 
     const relay = new WebSocket(url);
-    let state: DownloadRelayState = 'waiting_paired';
 
-    const pairedTimeout = setTimeout(() => {
-        if (state === 'waiting_paired') {
-            console.warn(`⚠️ Relay (↑ send): paired timeout — token=${token.slice(0, 8)}`);
-            relay.close(1001, 'Paired timeout');
+    // ── Phase 1: wait for paired ──────────────────────────────────────────────
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                relay.close();
+                reject(new Error('pairing timeout'));
+            }, PAIRED_TIMEOUT_MS);
+
+            relay.once('message', (raw: WebSocket.RawData) => {
+                clearTimeout(timeout);
+                let msg: Record<string, unknown>;
+                try { msg = JSON.parse(raw.toString()) as Record<string, unknown>; }
+                catch { relay.close(); reject(new Error('bad message')); return; }
+                if (msg['type'] !== 'paired') {
+                    relay.close();
+                    reject(new Error(`expected paired, got ${String(msg['type'])}`));
+                    return;
+                }
+                resolve();
+            });
+
+            relay.once('error', (e: Error) => { clearTimeout(timeout); reject(e); });
+        });
+    } catch (e: unknown) {
+        console.warn(`⚠️ Relay (↑ send) pairing failed — chunk=${chunkIndex}: ${(e as Error).message}`);
+        return;
+    }
+
+    console.log(`🔌 Relay (↑ send): paired — streaming chunk[${chunkIndex}]`);
+
+    // ── Phase 2: stream chunk as fixed-size binary frames ─────────────────────
+    try {
+        const fd  = fs.openSync(filePath, 'r');
+        const buf = Buffer.allocUnsafe(DOWNLOAD_BLOCK_SIZE);
+        let bytesRead: number;
+
+        while ((bytesRead = fs.readSync(fd, buf, 0, DOWNLOAD_BLOCK_SIZE, null)) > 0) {
+            relay.send(bytesRead === DOWNLOAD_BLOCK_SIZE ? buf : buf.subarray(0, bytesRead));
         }
-    }, PAIRED_TIMEOUT_MS);
 
-    relay.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
-        if (isBinary || state !== 'waiting_paired') return;
-
-        let msg: Record<string, unknown>;
-        try { msg = JSON.parse(data.toString()) as Record<string, unknown>; }
-        catch { return; }
-
-        if (msg['type'] !== 'paired') return;
-
-        clearTimeout(pairedTimeout);
-        state = 'done'; // block re-entry before any await
-        console.log(`🔌 Relay (↑ send): paired — streaming chunk[${chunkIndex}]`);
-
-        try {
-            const stream = fs.createReadStream(filePath, { highWaterMark: DOWNLOAD_BLOCK_SIZE });
-            for await (const block of stream) {
-                relay.send(block as Buffer);
-            }
-            relay.send(JSON.stringify({ type: 'chunk_complete' }));
-            relay.close(1000, 'Done');
-            console.log(`✅ chunk[${chunkIndex}] streamed to client`);
-        } catch (err: unknown) {
-            const errMsg = (err as Error).message;
-            console.error(`❌ Relay (↑ send) stream error: ${errMsg}`);
-            if (relay.readyState === WebSocket.OPEN) {
-                relay.send(JSON.stringify({ type: 'error', message: errMsg }));
-                relay.close(1011, 'Stream error');
-            }
+        fs.closeSync(fd);
+        relay.send(JSON.stringify({ type: 'chunk_complete' }));
+        relay.close(1000, 'Done');
+        console.log(`✅ chunk[${chunkIndex}] streamed to client`);
+    } catch (err: unknown) {
+        const errMsg = (err as Error).message;
+        console.error(`❌ Relay (↑ send) stream error: ${errMsg}`);
+        if (relay.readyState === WebSocket.OPEN) {
+            relay.send(JSON.stringify({ type: 'error', message: errMsg }));
+            relay.close(1011, 'Stream error');
         }
-    });
-
-    relay.on('close', () => clearTimeout(pairedTimeout));
-
-    relay.on('error', (err) => {
-        clearTimeout(pairedTimeout);
-        console.error(`❌ Relay (↑ send) connection error — token=${token.slice(0, 8)}:`, err.message);
-    });
+    }
 }
 
 // ─── Disk I/O ─────────────────────────────────────────────────────────────────
