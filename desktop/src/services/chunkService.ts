@@ -37,7 +37,7 @@ type RelayState =
     | 'done';
 
 // Relay protocol state machine states — download (peer sends)
-type DownloadRelayState = 'waiting_paired' | 'waiting_ack' | 'done';
+type DownloadRelayState = 'waiting_paired' | 'done';
 
 interface ChunkMeta {
     chunkIndex: number;
@@ -98,12 +98,12 @@ export function init(eventCb: ChunkEventCallback): void {
             }
 
         } else if (msg['type'] === 'chunk_download_request') {
-            const token        = msg['token'] as string;
-            const fileId       = msg['fileId'] as string;
-            const chunkIndexes = msg['chunkIndexes'] as number[];
-            const relayUrl     = msg['relayUrl'] as string | undefined;
-            if (token && fileId && Array.isArray(chunkIndexes)) {
-                handleDownloadRequest(token, fileId, chunkIndexes, relayUrl);
+            const token      = msg['token']      as string;
+            const fileId     = msg['fileId']     as string;
+            const chunkIndex = msg['chunkIndex'] as number;
+            const relayUrl   = msg['relayUrl']   as string | undefined;
+            if (token && fileId && typeof chunkIndex === 'number') {
+                handleDownloadRequest(token, fileId, chunkIndex, relayUrl);
             }
         }
     });
@@ -181,11 +181,9 @@ function cancelAssignment(token: string): void {
     console.log(`✅ Reserved space released (~${(removed.reservedBytes / 1024 / 1024).toFixed(1)} MiB) — token=${token.slice(0, 8)}...`);
 }
 
-function handleDownloadRequest(token: string, fileId: string, chunkIndexes: number[], relayUrl?: string): void {
-    console.log(`📤 Download request — fileId=${fileId} chunks=[${chunkIndexes}] token=${token.slice(0, 8)}...`);
-    connectToRelayForDownload(token, fileId, chunkIndexes, relayUrl).catch((err: Error) => {
-        console.error(`❌ Download relay failed — token=${token.slice(0, 8)}:`, err.message);
-    });
+function handleDownloadRequest(token: string, fileId: string, chunkIndex: number, relayUrl?: string): void {
+    console.log(`📤 Download request — fileId=${fileId} chunk=${chunkIndex} token=${token.slice(0, 8)}...`);
+    connectToRelayForDownload(token, fileId, chunkIndex, relayUrl);
 }
 
 // ─── Relay connection ─────────────────────────────────────────────────────────
@@ -349,89 +347,66 @@ async function connectToRelay(token: string, fileId: string, relayUrl?: string):
     });
 }
 
-async function connectToRelayForDownload(token: string, fileId: string, chunkIndexes: number[], relayUrl?: string): Promise<void> {
-    const url = buildRelayUrl(relayUrl || authService.getRelayBaseUrl());
-    console.log(`🔌 Relay (↑ send): → ${url}  token=${token.slice(0, 8)}...`);
+const DOWNLOAD_BLOCK_SIZE  = 64 * 1024; // 64 KiB per binary frame
+const PAIRED_TIMEOUT_MS    = 60_000;
 
-    return new Promise<void>((resolve, reject) => {
-        const relay = new WebSocket(url);
-        let state: DownloadRelayState = 'waiting_paired';
-        let cursor = 0;
+function connectToRelayForDownload(token: string, fileId: string, chunkIndex: number, relayUrl?: string): void {
+    const filePath = chunkFilePath(fileId, chunkIndex);
+    if (!fs.existsSync(filePath)) {
+        console.warn(`⚠️ Download: chunk not found on disk — ${filePath}`);
+        return;
+    }
 
-        async function sendNextChunk(): Promise<void> {
-            const chunkIndex = chunkIndexes[cursor]!;
-            const data = await fs.promises.readFile(chunkFilePath(fileId, chunkIndex));
-            const hash = crypto.createHash('sha256').update(data).digest('hex');
-            relay.send(JSON.stringify({ type: 'chunk_start', chunkIndex, size: data.length, hash }));
-            relay.send(data);
-            relay.send(JSON.stringify({ type: 'chunk_end', chunkIndex }));
-            console.log(`📤 chunk[${chunkIndex}] sent — ${data.length} bytes`);
+    const base = relayUrl || authService.getRelayBaseUrl();
+    const url  = `${base}?token=${token}&chunkIndex=${chunkIndex}&role=peer`;
+    console.log(`🔌 Relay (↑ send): → ${base}  chunk=${chunkIndex}  token=${token.slice(0, 8)}...`);
+
+    const relay = new WebSocket(url);
+    let state: DownloadRelayState = 'waiting_paired';
+
+    const pairedTimeout = setTimeout(() => {
+        if (state === 'waiting_paired') {
+            console.warn(`⚠️ Relay (↑ send): paired timeout — token=${token.slice(0, 8)}`);
+            relay.close(1001, 'Paired timeout');
         }
+    }, PAIRED_TIMEOUT_MS);
 
-        relay.on('open', () => {
-            relay.send(JSON.stringify({ token, role: 'peer' }));
-        });
+    relay.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
+        if (isBinary || state !== 'waiting_paired') return;
 
-        relay.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
-            if (isBinary) return;
+        let msg: Record<string, unknown>;
+        try { msg = JSON.parse(data.toString()) as Record<string, unknown>; }
+        catch { return; }
 
-            let msg: Record<string, unknown>;
-            try {
-                msg = JSON.parse(data.toString()) as Record<string, unknown>;
-            } catch {
-                return;
+        if (msg['type'] !== 'paired') return;
+
+        clearTimeout(pairedTimeout);
+        state = 'done'; // block re-entry before any await
+        console.log(`🔌 Relay (↑ send): paired — streaming chunk[${chunkIndex}]`);
+
+        try {
+            const stream = fs.createReadStream(filePath, { highWaterMark: DOWNLOAD_BLOCK_SIZE });
+            for await (const block of stream) {
+                relay.send(block as Buffer);
             }
-
-            const type = msg['type'] as string;
-
-            switch (state) {
-                case 'waiting_paired':
-                    if (type === 'paired') {
-                        console.log('🔌 Relay (↑ send): paired — starting transfer');
-                        state = 'waiting_ack';
-                        sendNextChunk().catch(err => {
-                            relay.close(1011, 'Read error');
-                            reject(new Error(`Failed to read chunk: ${(err as Error).message}`));
-                        });
-                    }
-                    break;
-
-                case 'waiting_ack':
-                    if (type === 'chunk_ack') {
-                        const acked = msg['chunkIndex'] as number;
-                        console.log(`✅ chunk[${acked}] acked by client`);
-                        cursor++;
-                        if (cursor >= chunkIndexes.length) {
-                            relay.send(JSON.stringify({ type: 'transfer_complete' }));
-                            state = 'done';
-                            relay.close(1000, 'Transfer complete');
-                            resolve();
-                        } else {
-                            sendNextChunk().catch(err => {
-                                relay.close(1011, 'Read error');
-                                reject(new Error(`Failed to read chunk: ${(err as Error).message}`));
-                            });
-                        }
-                    } else if (type === 'chunk_error') {
-                        const errMsg = (msg['error'] as string) ?? 'unknown';
-                        console.error(`❌ chunk_error from client: ${errMsg}`);
-                        relay.close(1008, 'Client reported chunk error');
-                        reject(new Error(`Client chunk error: ${errMsg}`));
-                    }
-                    break;
-
-                default:
-                    break;
+            relay.send(JSON.stringify({ type: 'chunk_complete' }));
+            relay.close(1000, 'Done');
+            console.log(`✅ chunk[${chunkIndex}] streamed to client`);
+        } catch (err: unknown) {
+            const errMsg = (err as Error).message;
+            console.error(`❌ Relay (↑ send) stream error: ${errMsg}`);
+            if (relay.readyState === WebSocket.OPEN) {
+                relay.send(JSON.stringify({ type: 'error', message: errMsg }));
+                relay.close(1011, 'Stream error');
             }
-        });
+        }
+    });
 
-        relay.on('close', (code) => {
-            if (state !== 'done') {
-                reject(new Error(`Relay closed unexpectedly (code ${code}) in state '${state}'`));
-            }
-        });
+    relay.on('close', () => clearTimeout(pairedTimeout));
 
-        relay.on('error', reject);
+    relay.on('error', (err) => {
+        clearTimeout(pairedTimeout);
+        console.error(`❌ Relay (↑ send) connection error — token=${token.slice(0, 8)}:`, err.message);
     });
 }
 
