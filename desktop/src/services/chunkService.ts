@@ -28,13 +28,16 @@ interface AssignmentStoreSchema {
     assignments: ChunkAssignment[];
 }
 
-// Relay protocol state machine states
+// Relay protocol state machine states — upload (peer receives)
 type RelayState =
     | 'waiting_paired'
     | 'waiting_chunk_start'
     | 'waiting_binary'
     | 'waiting_chunk_end'
     | 'done';
+
+// Relay protocol state machine states — download (peer sends)
+type DownloadRelayState = 'waiting_paired' | 'waiting_ack' | 'done';
 
 interface ChunkMeta {
     chunkIndex: number;
@@ -92,6 +95,15 @@ export function init(eventCb: ChunkEventCallback): void {
             const fileId = msg['fileId'] as string;
             if (token && fileId) {
                 cancelAssignment(token);
+            }
+
+        } else if (msg['type'] === 'chunk_download_request') {
+            const token        = msg['token'] as string;
+            const fileId       = msg['fileId'] as string;
+            const chunkIndexes = msg['chunkIndexes'] as number[];
+            const relayUrl     = msg['relayUrl'] as string | undefined;
+            if (token && fileId && Array.isArray(chunkIndexes)) {
+                handleDownloadRequest(token, fileId, chunkIndexes, relayUrl);
             }
         }
     });
@@ -167,6 +179,13 @@ function cancelAssignment(token: string): void {
     const removed = list.splice(idx, 1)[0]!;
     assignmentStore.set('assignments', list);
     console.log(`✅ Reserved space released (~${(removed.reservedBytes / 1024 / 1024).toFixed(1)} MiB) — token=${token.slice(0, 8)}...`);
+}
+
+function handleDownloadRequest(token: string, fileId: string, chunkIndexes: number[], relayUrl?: string): void {
+    console.log(`📤 Download request — fileId=${fileId} chunks=[${chunkIndexes}] token=${token.slice(0, 8)}...`);
+    connectToRelayForDownload(token, fileId, chunkIndexes, relayUrl).catch((err: Error) => {
+        console.error(`❌ Download relay failed — token=${token.slice(0, 8)}:`, err.message);
+    });
 }
 
 // ─── Relay connection ─────────────────────────────────────────────────────────
@@ -322,6 +341,92 @@ async function connectToRelay(token: string, fileId: string, relayUrl?: string):
         relay.on('close', (code) => {
             if (state !== 'done') {
                 updateStatus(token, 'failed');
+                reject(new Error(`Relay closed unexpectedly (code ${code}) in state '${state}'`));
+            }
+        });
+
+        relay.on('error', reject);
+    });
+}
+
+async function connectToRelayForDownload(token: string, fileId: string, chunkIndexes: number[], relayUrl?: string): Promise<void> {
+    const url = buildRelayUrl(relayUrl || authService.getRelayBaseUrl());
+    console.log(`🔌 Relay (↑ send): → ${url}  token=${token.slice(0, 8)}...`);
+
+    return new Promise<void>((resolve, reject) => {
+        const relay = new WebSocket(url);
+        let state: DownloadRelayState = 'waiting_paired';
+        let cursor = 0;
+
+        async function sendNextChunk(): Promise<void> {
+            const chunkIndex = chunkIndexes[cursor]!;
+            const data = await fs.promises.readFile(chunkFilePath(fileId, chunkIndex));
+            const hash = crypto.createHash('sha256').update(data).digest('hex');
+            relay.send(JSON.stringify({ type: 'chunk_start', chunkIndex, size: data.length, hash }));
+            relay.send(data);
+            relay.send(JSON.stringify({ type: 'chunk_end', chunkIndex }));
+            console.log(`📤 chunk[${chunkIndex}] sent — ${data.length} bytes`);
+        }
+
+        relay.on('open', () => {
+            relay.send(JSON.stringify({ token, role: 'peer' }));
+        });
+
+        relay.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
+            if (isBinary) return;
+
+            let msg: Record<string, unknown>;
+            try {
+                msg = JSON.parse(data.toString()) as Record<string, unknown>;
+            } catch {
+                return;
+            }
+
+            const type = msg['type'] as string;
+
+            switch (state) {
+                case 'waiting_paired':
+                    if (type === 'paired') {
+                        console.log('🔌 Relay (↑ send): paired — starting transfer');
+                        state = 'waiting_ack';
+                        sendNextChunk().catch(err => {
+                            relay.close(1011, 'Read error');
+                            reject(new Error(`Failed to read chunk: ${(err as Error).message}`));
+                        });
+                    }
+                    break;
+
+                case 'waiting_ack':
+                    if (type === 'chunk_ack') {
+                        const acked = msg['chunkIndex'] as number;
+                        console.log(`✅ chunk[${acked}] acked by client`);
+                        cursor++;
+                        if (cursor >= chunkIndexes.length) {
+                            relay.send(JSON.stringify({ type: 'transfer_complete' }));
+                            state = 'done';
+                            relay.close(1000, 'Transfer complete');
+                            resolve();
+                        } else {
+                            sendNextChunk().catch(err => {
+                                relay.close(1011, 'Read error');
+                                reject(new Error(`Failed to read chunk: ${(err as Error).message}`));
+                            });
+                        }
+                    } else if (type === 'chunk_error') {
+                        const errMsg = (msg['error'] as string) ?? 'unknown';
+                        console.error(`❌ chunk_error from client: ${errMsg}`);
+                        relay.close(1008, 'Client reported chunk error');
+                        reject(new Error(`Client chunk error: ${errMsg}`));
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        });
+
+        relay.on('close', (code) => {
+            if (state !== 'done') {
                 reject(new Error(`Relay closed unexpectedly (code ${code}) in state '${state}'`));
             }
         });
