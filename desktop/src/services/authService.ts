@@ -7,6 +7,7 @@ const DEFAULT_API_URL = 'https://api.decloud.network';
 interface SettingsSchema {
     apiBaseUrl: string;
     relayBaseUrl: string;
+    storageBaseDir: string;
     token: string;
 }
 
@@ -32,6 +33,14 @@ export function getRelayBaseUrl(): string {
 
 export function setRelayBaseUrl(url: string): void {
     settingsStore.set('relayBaseUrl', url);
+}
+
+export function getStorageBaseDir(): string {
+    return settingsStore.has('storageBaseDir') ? settingsStore.get('storageBaseDir') : '';
+}
+
+export function setStorageBaseDir(dir: string): void {
+    settingsStore.set('storageBaseDir', dir);
 }
 
 // ─── Token ────────────────────────────────────────────────────────────────────

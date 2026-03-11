@@ -16,6 +16,7 @@ export interface ChunkAssignment {
     chunkIndexes: number[];
     receivedAt: number;
     status: 'pending' | 'receiving' | 'complete' | 'failed';
+    reservedBytes: number;
 }
 
 export interface StorageStats {
@@ -26,6 +27,25 @@ export interface StorageStats {
 interface AssignmentStoreSchema {
     assignments: ChunkAssignment[];
 }
+
+// Relay protocol state machine states
+type RelayState =
+    | 'waiting_paired'
+    | 'waiting_chunk_start'
+    | 'waiting_binary'
+    | 'waiting_chunk_end'
+    | 'done';
+
+interface ChunkMeta {
+    chunkIndex: number;
+    size: number;
+    hash: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Fallback reservation per chunk when no prior data exists to derive an average from. */
+const DEFAULT_BYTES_PER_CHUNK = 1024 * 1024; // 1 MiB
 
 // ─── Persistent store ─────────────────────────────────────────────────────────
 
@@ -40,23 +60,19 @@ type ChunkEventCallback = (event: 'assignment' | 'storage-update', data: unknown
 
 let onEvent: ChunkEventCallback = () => {};
 
-// ─── Paths ────────────────────────────────────────────────────────────────────
+// ─── Storage path ─────────────────────────────────────────────────────────────
 
-function storageDir(): string {
-    return path.join(app.getPath('userData'), 'storage');
+function storageBaseDir(): string {
+    const configured = authService.getStorageBaseDir();
+    return configured || path.join(app.getPath('userData'), 'storage');
 }
 
-function chunkPath(fileId: string, chunkIndex: number): string {
-    return path.join(storageDir(), fileId, `${chunkIndex}.bin`);
+function chunkFilePath(fileId: string, chunkIndex: number): string {
+    return path.join(storageBaseDir(), fileId, `${chunkIndex}.bin`);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Call once from main.ts after app.whenReady().
- * Registers the message handler on wsService so chunk_assignment messages
- * are routed here automatically.
- */
 export function init(eventCb: ChunkEventCallback): void {
     onEvent = eventCb;
 
@@ -65,8 +81,17 @@ export function init(eventCb: ChunkEventCallback): void {
             const token        = msg['token'] as string;
             const fileId       = msg['fileId'] as string;
             const chunkIndexes = msg['chunkIndexes'] as number[];
+            // relayUrl is optional — server may send it directly in the message
+            const relayUrl     = msg['relayUrl'] as string | undefined;
             if (token && fileId && Array.isArray(chunkIndexes)) {
-                handleAssignment(token, fileId, chunkIndexes);
+                handleAssignment(token, fileId, chunkIndexes, relayUrl);
+            }
+
+        } else if (msg['type'] === 'cancel_assignment') {
+            const token  = msg['token'] as string;
+            const fileId = msg['fileId'] as string;
+            if (token && fileId) {
+                cancelAssignment(token);
             }
         }
     });
@@ -77,7 +102,7 @@ export function getAssignments(): ChunkAssignment[] {
 }
 
 export function getStorageStats(): StorageStats {
-    const dir = storageDir();
+    const dir = storageBaseDir();
     if (!fs.existsSync(dir)) return { usedBytes: 0, chunkCount: 0 };
 
     let usedBytes = 0;
@@ -90,38 +115,58 @@ export function getStorageStats(): StorageStats {
                 try {
                     usedBytes += fs.statSync(path.join(fileDir, chunk)).size;
                     chunkCount++;
-                } catch { /* skip unreadable */ }
+                } catch { /* skip */ }
             }
         }
-    } catch { /* storage dir may not exist yet */ }
+    } catch { /* dir may not exist */ }
 
     return { usedBytes, chunkCount };
 }
 
 // ─── Assignment handling ──────────────────────────────────────────────────────
 
-function handleAssignment(token: string, fileId: string, chunkIndexes: number[]): void {
-    console.log(`📦 Chunk assignment — fileId=${fileId} chunks=[${chunkIndexes}] token=${token.slice(0, 8)}...`);
+function estimateReservedBytes(chunkCount: number): number {
+    const stats = getStorageStats();
+    const avgSize = stats.chunkCount > 0
+        ? Math.round(stats.usedBytes / stats.chunkCount)
+        : DEFAULT_BYTES_PER_CHUNK;
+    return chunkCount * avgSize;
+}
 
-    // Persist
+function handleAssignment(token: string, fileId: string, chunkIndexes: number[], relayUrl?: string): void {
+    console.log(`📦 Assignment — fileId=${fileId} chunks=[${chunkIndexes}] token=${token.slice(0, 8)}...`);
+
+    const reservedBytes = estimateReservedBytes(chunkIndexes.length);
     const list = assignmentStore.get('assignments');
-    list.push({ token, fileId, chunkIndexes, receivedAt: Date.now(), status: 'pending' });
+    list.push({ token, fileId, chunkIndexes, receivedAt: Date.now(), status: 'pending', reservedBytes });
     assignmentStore.set('assignments', list);
+    console.log(`📐 Reserved ~${(reservedBytes / 1024 / 1024).toFixed(1)} MiB for ${chunkIndexes.length} chunk(s)`);
 
-    // ACK immediately — server times out after 5 s
+    // ACK immediately — server times out in 5 s
     const sent = wsService.send(JSON.stringify({ type: 'chunk_assignment_ack', token }));
     console.log(sent
-        ? `✅ ACK sent for token ${token.slice(0, 8)}...`
-        : '⚠️ ACK could not be sent: main WS not open');
+        ? `✅ ACK sent — token=${token.slice(0, 8)}...`
+        : '⚠️ ACK failed: main WS not open');
 
-    // Notify renderer
     onEvent('assignment', { token, fileId, chunkIndexes });
 
-    // Connect to relay in background
-    connectToRelay(token, fileId, chunkIndexes).catch(err => {
-        console.error(`❌ Relay error for token ${token.slice(0, 8)}:`, err.message);
+    connectToRelay(token, fileId, relayUrl).catch(err => {
+        console.error(`❌ Relay failed — token=${token.slice(0, 8)}:`, err.message);
         updateStatus(token, 'failed');
     });
+}
+
+function cancelAssignment(token: string): void {
+    console.log(`🚫 cancel_assignment — token=${token.slice(0, 8)}...`);
+    const list = assignmentStore.get('assignments');
+    const idx = list.findIndex(a => a.token === token && a.status === 'pending');
+    if (idx === -1) {
+        console.warn(`⚠️ cancel_assignment: no pending entry for token=${token.slice(0, 8)}`);
+        return;
+    }
+    const removed = list.splice(idx, 1)[0]!;
+    assignmentStore.set('assignments', list);
+    console.log(`✅ Reserved space released (~${(removed.reservedBytes / 1024 / 1024).toFixed(1)} MiB) — token=${token.slice(0, 8)}...`);
 }
 
 // ─── Relay connection ─────────────────────────────────────────────────────────
@@ -134,76 +179,150 @@ function buildRelayUrl(base: string): string {
         + '/connect';
 }
 
-async function connectToRelay(
-    token: string,
-    fileId: string,
-    chunkIndexes: number[],
-): Promise<void> {
-    const url = buildRelayUrl(authService.getRelayBaseUrl());
-    console.log(`🔌 Relay: connecting to ${url} — token=${token.slice(0, 8)}...`);
-    updateStatus(token, 'receiving');
+async function connectToRelay(token: string, fileId: string, relayUrl?: string): Promise<void> {
+    const url = buildRelayUrl(relayUrl || authService.getRelayBaseUrl());
+    console.log(`🔌 Relay: → ${url}  token=${token.slice(0, 8)}...`);
 
     return new Promise<void>((resolve, reject) => {
         const relay = new WebSocket(url);
 
-        let chunkCursor = 0;
-        const received: number[] = [];
-        let pendingHash: string | null = null;
+        let state: RelayState = 'waiting_paired';
+        let currentMeta: ChunkMeta | null = null;
+        let currentBuffer: Buffer | null = null;
 
         relay.on('open', () => {
             relay.send(JSON.stringify({ token, role: 'peer' }));
         });
 
         relay.on('message', async (data: WebSocket.RawData, isBinary: boolean) => {
-            if (!isBinary) {
-                // JSON metadata — may carry chunk_hash for the next binary frame
-                try {
-                    const meta = JSON.parse(data.toString()) as { chunk_hash?: string };
-                    if (meta.chunk_hash) pendingHash = meta.chunk_hash;
-                } catch { /* ignore malformed */ }
-                return;
-            }
-
-            const idx = chunkIndexes[chunkCursor];
-            if (idx === undefined) {
-                console.warn('⚠️ Relay: received unexpected extra chunk — ignoring');
-                return;
-            }
-
-            const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-            console.log(`📥 Relay: chunk[${idx}] — ${buf.length} bytes`);
-
-            try {
-                await saveChunk(fileId, idx, buf, pendingHash ?? undefined);
-                pendingHash = null;
-                received.push(idx);
-                chunkCursor++;
-
-                onEvent('storage-update', getStorageStats());
-
-                if (chunkCursor >= chunkIndexes.length) {
-                    relay.send(JSON.stringify({
-                        type: 'chunks_received',
-                        fileId,
-                        chunkIndexes: received,
-                    }));
-                    console.log(`✅ All chunks received for fileId=${fileId}`);
-                    updateStatus(token, 'complete');
-                    relay.close(1000, 'All chunks received');
-                    resolve();
+            // ── Binary frame — must arrive between chunk_start and chunk_end ──
+            if (isBinary) {
+                if (state !== 'waiting_binary') {
+                    console.warn(`⚠️ Relay: unexpected binary in state ${state}`);
+                    return;
                 }
-            } catch (err: any) {
-                relay.close(1011, 'Save error');
-                reject(err);
+                currentBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+                console.log(`📥 Binary chunk[${currentMeta!.chunkIndex}] — ${currentBuffer.length} bytes`);
+                state = 'waiting_chunk_end';
+                return;
+            }
+
+            // ── Text (JSON) frame ─────────────────────────────────────────────
+            let msg: Record<string, unknown>;
+            try {
+                msg = JSON.parse(data.toString()) as Record<string, unknown>;
+            } catch {
+                console.warn('⚠️ Relay: non-JSON text frame');
+                return;
+            }
+
+            const type = msg['type'] as string;
+
+            switch (state) {
+
+                case 'waiting_paired':
+                    if (type === 'paired') {
+                        console.log('🔌 Relay: paired — ready for chunks');
+                        updateStatus(token, 'receiving'); // PENDING → ACTIVE
+                        state = 'waiting_chunk_start';
+                    }
+                    break;
+
+                case 'waiting_chunk_start':
+                    if (type === 'chunk_start') {
+                        currentMeta = {
+                            chunkIndex: msg['chunkIndex'] as number,
+                            size: msg['size'] as number,
+                            hash: msg['hash'] as string,
+                        };
+                        console.log(`📦 chunk_start — index=${currentMeta.chunkIndex} size=${currentMeta.size}`);
+                        state = 'waiting_binary';
+
+                    } else if (type === 'transfer_complete') {
+                        console.log('✅ Relay: transfer_complete');
+                        state = 'done';
+                        updateStatus(token, 'complete');
+                        relay.close(1000, 'Transfer complete');
+                        resolve();
+                    }
+                    break;
+
+                case 'waiting_chunk_end':
+                    if (type === 'chunk_end') {
+                        const chunkIndex = msg['chunkIndex'] as number;
+
+                        if (!currentMeta || !currentBuffer) {
+                            reject(new Error('chunk_end with no pending chunk data'));
+                            return;
+                        }
+
+                        // Verify SHA-256
+                        const actualHash = crypto
+                            .createHash('sha256')
+                            .update(currentBuffer)
+                            .digest('hex');
+
+                        if (actualHash !== currentMeta.hash) {
+                            console.error(
+                                `❌ Hash mismatch chunk[${chunkIndex}]\n` +
+                                `  expected: ${currentMeta.hash}\n` +
+                                `  received: ${actualHash}`
+                            );
+                            relay.send(JSON.stringify({
+                                type: 'chunk_error',
+                                chunkIndex,
+                                error: 'hash mismatch',
+                            }));
+                            relay.close(1008, 'Hash mismatch');
+                            reject(new Error(`Hash mismatch for chunk ${chunkIndex}`));
+                            return;
+                        }
+
+                        // Save to disk
+                        try {
+                            await saveChunk(fileId, chunkIndex, currentBuffer);
+                        } catch (err: any) {
+                            relay.send(JSON.stringify({
+                                type: 'chunk_error',
+                                chunkIndex,
+                                error: 'disk write failed',
+                            }));
+                            relay.close(1011, 'Save error');
+                            reject(err);
+                            return;
+                        }
+
+                        // ACK relay
+                        relay.send(JSON.stringify({ type: 'chunk_ack', chunkIndex }));
+
+                        // Notify coordinator — best-effort, no ACK expected
+                        wsService.send(JSON.stringify({
+                            type: 'chunk_stored',
+                            token,
+                            fileId,
+                            chunkIndex,
+                        }));
+
+                        console.log(`✅ chunk[${chunkIndex}] verified & saved`);
+
+                        onEvent('storage-update', getStorageStats());
+
+                        // Reset for next chunk
+                        currentMeta = null;
+                        currentBuffer = null;
+                        state = 'waiting_chunk_start';
+                    }
+                    break;
+
+                default:
+                    break;
             }
         });
 
         relay.on('close', (code) => {
-            if (chunkCursor < chunkIndexes.length) {
+            if (state !== 'done') {
                 updateStatus(token, 'failed');
-                reject(new Error(
-                    `Relay closed early (code ${code}): received ${chunkCursor}/${chunkIndexes.length} chunks`
-                ));
+                reject(new Error(`Relay closed unexpectedly (code ${code}) in state '${state}'`));
             }
         });
 
@@ -211,31 +330,13 @@ async function connectToRelay(
     });
 }
 
-// ─── Chunk file I/O ───────────────────────────────────────────────────────────
+// ─── Disk I/O ─────────────────────────────────────────────────────────────────
 
-async function saveChunk(
-    fileId: string,
-    chunkIndex: number,
-    data: Buffer,
-    expectedHash?: string,
-): Promise<void> {
-    const dest = chunkPath(fileId, chunkIndex);
+async function saveChunk(fileId: string, chunkIndex: number, data: Buffer): Promise<void> {
+    const dest = chunkFilePath(fileId, chunkIndex);
     await fs.promises.mkdir(path.dirname(dest), { recursive: true });
     await fs.promises.writeFile(dest, data);
-
-    const hash = crypto.createHash('sha256').update(data).digest('hex');
-
-    if (expectedHash) {
-        if (hash !== expectedHash) {
-            await fs.promises.unlink(dest).catch(() => {});
-            throw new Error(
-                `Hash mismatch for chunk ${chunkIndex}: expected ${expectedHash}, got ${hash}`
-            );
-        }
-        console.log(`💾 Chunk ${chunkIndex} saved & verified ✅ (${data.length} bytes)`);
-    } else {
-        console.log(`💾 Chunk ${chunkIndex} saved (${data.length} bytes | sha256: ${hash.slice(0, 16)}… — no server hash to verify)`);
-    }
+    console.log(`💾 ${dest} (${data.length} bytes)`);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
