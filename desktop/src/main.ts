@@ -355,17 +355,40 @@ ipcMain.handle('reject-deal', (_event, dealId: string) => {
 // ─── IPC: DCLD approval ──────────────────────────────────────────────────────
 
 ipcMain.handle('approve-dcld-escrow', async () => {
-    const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS ?? ethService.ESCROW_CONTRACT_ADDR;
-    if (!wallet) throw new Error('No wallet connected');
+    if (!wallet) throw new Error('No wallet loaded — restart the app and try again.');
 
+    const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS ?? ethService.ESCROW_CONTRACT_ADDR;
     const provider = ethService.createProvider();
     const signer   = wallet.connect(provider);
 
     const tokenAbi = ['function approve(address spender, uint256 amount) returns (bool)'];
     const token = new ethers.Contract(ethService.DCLD_TOKEN_ADDR, tokenAbi, signer);
 
-    const tx = await (token as any).approve(escrowAddress, ethers.MaxUint256, { gasLimit: 100_000 });
-    await tx.wait(1);
+    let tx: any;
+    try {
+        tx = await (token as any).approve(escrowAddress, ethers.MaxUint256, { gasLimit: 100_000 });
+    } catch (err: any) {
+        const msg: string = err?.message ?? '';
+        if (msg.includes('insufficient funds') || msg.includes('insufficient balance'))
+            throw new Error('Not enough ETH for gas fees — top up your wallet with Sepolia ETH and retry.');
+        if (msg.includes('user rejected') || msg.includes('ACTION_REJECTED'))
+            throw new Error('Transaction rejected.');
+        if (msg.includes('nonce'))
+            throw new Error('Nonce mismatch — another transaction may be pending. Wait a moment and retry.');
+        if (msg.includes('network') || msg.includes('NETWORK_ERROR') || msg.includes('timeout'))
+            throw new Error('Network error — check your internet connection and retry.');
+        throw new Error(`Failed to send transaction: ${msg || 'unknown error'}`);
+    }
+
+    try {
+        await tx.wait(1);
+    } catch (err: any) {
+        const msg: string = err?.message ?? '';
+        if (msg.includes('reverted'))
+            throw new Error(`Contract rejected the approval on-chain. Tx: ${tx.hash}`);
+        throw new Error(`Transaction sent (${tx.hash}) but confirmation failed: ${msg}`);
+    }
+
     console.log(`✅ DCLD manually approved for escrow. tx: ${tx.hash}`);
     sendToUI('peer:approval', { status: 'approved', txHash: tx.hash });
     return { status: 'approved', txHash: tx.hash };

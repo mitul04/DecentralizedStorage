@@ -980,7 +980,7 @@
             try {
                 const res = await ipcRenderer.invoke('approve-dcld-escrow');
                 result.className = 'feedback-msg feedback-success';
-                result.innerText = `✅ Approved! Tx: ${res.txHash}`;
+                result.innerText = `Approval successful! The StorageEscrow contract can now move DCLD on your behalf.\nTx: ${res.txHash}`;
                 btn.innerText = '✅ Already Approved';
                 btn.disabled = true;
                 btn.style.opacity = '0.6';
