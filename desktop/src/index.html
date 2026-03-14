@@ -981,10 +981,12 @@
                 const res = await ipcRenderer.invoke('approve-dcld-escrow');
                 result.className = 'feedback-msg feedback-success';
                 result.innerText = `✅ Approved! Tx: ${res.txHash}`;
+                btn.innerText = '✅ Already Approved';
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
             } catch (err) {
                 result.className = 'feedback-msg feedback-error';
                 result.innerText = `❌ ${err.message}`;
-            } finally {
                 btn.innerText = '✅ Approve DCLD Spending';
                 btn.disabled = false;
             }
