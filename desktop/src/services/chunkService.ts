@@ -57,7 +57,47 @@ const assignmentStore = new Store<AssignmentStoreSchema>({
 
 // ─── Event callback (→ main.ts → renderer) ───────────────────────────────────
 
-type ChunkEventCallback = (event: 'assignment' | 'storage-update', data: unknown) => void;
+type ChunkEventCallback = (event: 'assignment' | 'storage-update' | 'download' | 'deal', data: unknown) => void;
+
+// ─── Manual deal approval queue ───────────────────────────────────────────────
+
+export interface PendingApproval {
+    dealId: string;
+    dealData: Record<string, unknown>;
+    expiresAt: number;
+}
+
+interface PendingApprovalEntry extends PendingApproval {
+    resolve: () => Promise<void>;
+    timeoutHandle: ReturnType<typeof setTimeout>;
+}
+
+const pendingDeals = new Map<string, PendingApprovalEntry>();
+
+export function getPendingDeals(): PendingApproval[] {
+    return Array.from(pendingDeals.values()).map(({ dealId, dealData, expiresAt }) => ({
+        dealId,
+        dealData,
+        expiresAt,
+    }));
+}
+
+export async function approveDeal(dealId: string): Promise<void> {
+    const entry = pendingDeals.get(dealId);
+    if (!entry) throw new Error(`No pending deal: ${dealId}`);
+    clearTimeout(entry.timeoutHandle);
+    pendingDeals.delete(dealId);
+    await entry.resolve();
+}
+
+export function rejectDeal(dealId: string): void {
+    const entry = pendingDeals.get(dealId);
+    if (!entry) return;
+    clearTimeout(entry.timeoutHandle);
+    pendingDeals.delete(dealId);
+    onEvent('deal', { phase: 'rejected', dealId });
+    console.log(`🚫 Deal ${dealId.slice(0, 12)}… rejected by peer`);
+}
 
 let onEvent: ChunkEventCallback = () => {};
 
@@ -102,6 +142,21 @@ export function init(eventCb: ChunkEventCallback): void {
             const relayUrl   = msg['relayUrl']   as string | undefined;
             if (token && fileId && typeof chunkIndex === 'number') {
                 handleDownloadRequest(token, fileId, chunkIndex, relayUrl);
+            }
+
+        } else if (msg['type'] === 'deal_signing_request') {
+            handleDealSigningRequest(msg as Record<string, unknown>).catch((err: Error) => {
+                console.error(`❌ Deal signing failed: ${err.message}`);
+            });
+
+        } else if (msg['type'] === 'proof_challenge') {
+            const dealId   = msg['dealId']   as string;
+            const interval = msg['interval'] as number;
+            const nonce    = msg['nonce']    as string;
+            if (dealId && interval && nonce) {
+                handleProofChallenge(dealId, interval, nonce).catch((err: Error) => {
+                    console.error(`❌ Proof challenge failed: ${err.message}`);
+                });
             }
         }
     });
@@ -181,8 +236,10 @@ function cancelAssignment(token: string): void {
 
 function handleDownloadRequest(token: string, fileId: string, chunkIndex: number, relayUrl?: string): void {
     console.log(`📤 Download request — fileId=${fileId} chunk=${chunkIndex} token=${token.slice(0, 8)}...`);
+    onEvent('download', { phase: 'requested', fileId, chunkIndex });
     connectToRelayForDownload(token, fileId, chunkIndex, relayUrl).catch((err: Error) => {
         console.warn(`⚠️ Download relay failed — chunk=${chunkIndex} token=${token.slice(0, 8)}: ${err.message}`);
+        onEvent('download', { phase: 'failed', fileId, chunkIndex, error: err.message });
     });
 }
 
@@ -392,6 +449,7 @@ async function connectToRelayForDownload(token: string, fileId: string, chunkInd
     }
 
     console.log(`🔌 Relay (↑ send): paired — streaming chunk[${chunkIndex}]`);
+    onEvent('download', { phase: 'streaming', fileId, chunkIndex });
 
     // ── Phase 2: stream chunk as fixed-size binary frames ─────────────────────
     try {
@@ -407,6 +465,7 @@ async function connectToRelayForDownload(token: string, fileId: string, chunkInd
         relay.send(JSON.stringify({ type: 'chunk_complete' }));
         relay.close(1000, 'Done');
         console.log(`✅ chunk[${chunkIndex}] streamed to client`);
+        onEvent('download', { phase: 'complete', fileId, chunkIndex });
     } catch (err: unknown) {
         const errMsg = (err as Error).message;
         console.error(`❌ Relay (↑ send) stream error: ${errMsg}`);
@@ -424,6 +483,178 @@ async function saveChunk(fileId: string, chunkIndex: number, data: Buffer): Prom
     await fs.promises.mkdir(path.dirname(dest), { recursive: true });
     await fs.promises.writeFile(dest, data);
     console.log(`💾 ${dest} (${data.length} bytes)`);
+}
+
+// ─── Deal signing ─────────────────────────────────────────────────────────────
+
+// EIP-712 types — must match StorageEscrow.sol DEAL_TYPEHASH exactly
+const DEAL_TYPES = {
+    Deal: [
+        { name: 'dealId',           type: 'bytes32'   },
+        { name: 'fileId',           type: 'bytes32'   },
+        { name: 'merkleRoot',       type: 'bytes32'   },
+        { name: 'client',           type: 'address'   },
+        { name: 'peer',             type: 'address'   },
+        { name: 'size',             type: 'uint256'   },
+        { name: 'duration',         type: 'uint256'   },
+        { name: 'price',            type: 'uint256'   },
+        { name: 'peerEscrowAmount', type: 'uint256'   },
+        { name: 'chunkHashes',      type: 'bytes32[]' },
+    ],
+};
+
+async function signAndPostDeal(msg: Record<string, unknown>): Promise<void> {
+    const dealId        = msg['dealId']        as string;
+    const escrowAddress = msg['escrowAddress'] as string;
+
+    const wallet = authService.getWallet();
+    if (!wallet) {
+        console.warn('⚠️ signAndPostDeal — no wallet loaded');
+        return;
+    }
+
+    const { ethers } = await import('ethers');
+
+    const domain = {
+        name:              'StorageEscrow',
+        version:           '1',
+        chainId:           BigInt(11155111), // Sepolia
+        verifyingContract: ethers.getAddress(escrowAddress),
+    };
+
+    const dealValue = {
+        dealId:           msg['dealId']        as string,
+        fileId:           msg['fileId']        as string,
+        merkleRoot:       msg['merkleRoot']     as string,
+        client:           ethers.getAddress(msg['clientAddress'] as string),
+        peer:             ethers.getAddress(msg['peerAddress']   as string),
+        size:             BigInt(msg['sizeBytes']      as string),
+        duration:         BigInt(msg['durationBlocks'] as string),
+        price:            BigInt(msg['priceWei']       as string),
+        peerEscrowAmount: BigInt(msg['peerEscrowWei']  as string),
+        chunkHashes:      (msg['chunkHashes'] as string[]) ?? [],
+    };
+
+    let signature: string;
+    try {
+        signature = await wallet.signTypedData(domain, DEAL_TYPES, dealValue);
+    } catch (err: unknown) {
+        console.error(`❌ signTypedData failed: ${(err as Error).message}`);
+        return;
+    }
+
+    const apiBase = authService.getApiBaseUrl();
+    const token   = authService.getToken();
+    try {
+        const res = await fetch(`${apiBase}/peer/deals/${dealId}/sign`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ signature }),
+        });
+        if (!res.ok) {
+            const body = await res.text();
+            throw new Error(`${res.status} ${body}`);
+        }
+        console.log(`✅ Deal ${dealId.slice(0, 12)}… signed and submitted`);
+        onEvent('deal', { phase: 'signed', dealId });
+    } catch (err: unknown) {
+        console.error(`❌ Deal sign POST failed: ${(err as Error).message}`);
+    }
+}
+
+async function handleDealSigningRequest(msg: Record<string, unknown>): Promise<void> {
+    const dealId        = msg['dealId']        as string;
+    const escrowAddress = msg['escrowAddress'] as string;
+
+    if (!dealId || !escrowAddress) {
+        console.warn('⚠️ deal_signing_request missing dealId or escrowAddress');
+        return;
+    }
+
+    const wallet = authService.getWallet();
+    if (!wallet) {
+        console.warn('⚠️ deal_signing_request — no wallet loaded, cannot sign');
+        return;
+    }
+
+    if (authService.getPeerDealAutoSign()) {
+        // Auto mode: sign immediately (existing behaviour)
+        console.log(`✍️  Auto-signing deal ${dealId.slice(0, 12)}…`);
+        await signAndPostDeal(msg);
+    } else {
+        // Manual mode: queue for peer approval with 5-minute timeout
+        const expiresAt = Date.now() + 5 * 60 * 1000;
+        const timeoutHandle = setTimeout(() => {
+            pendingDeals.delete(dealId);
+            onEvent('deal', { phase: 'expired', dealId });
+            console.log(`⏰ Deal ${dealId.slice(0, 12)}… expired without approval`);
+        }, 5 * 60 * 1000);
+
+        pendingDeals.set(dealId, {
+            dealId,
+            dealData: msg,
+            expiresAt,
+            resolve: () => signAndPostDeal(msg),
+            timeoutHandle,
+        });
+
+        console.log(`⏳ Deal ${dealId.slice(0, 12)}… queued for manual approval`);
+        onEvent('deal', { phase: 'pending_approval', dealId, dealData: msg, expiresAt });
+    }
+}
+
+// ─── Storage proof challenge ──────────────────────────────────────────────────
+
+async function handleProofChallenge(dealId: string, interval: number, nonce: string): Promise<void> {
+    console.log(`🔍 Proof challenge — deal: ${dealId.slice(0, 12)}…  interval: ${interval}`);
+
+    // Find which file/chunks are associated with this deal by looking at assignments
+    // We derive the fileId from the assignment store using the dealId sent in the signing request.
+    // Since we don't store dealId→fileId mapping, we read all chunk files from storage and hash them.
+    // The coordinator links dealId → peer via peerWS, and we stored chunk files by fileId.
+    // We need to find the relevant file. For now we scan the assignment store for context.
+    // A more robust approach would persist dealId→fileId in a deal store.
+
+    // Load chunk files by scanning storage directory
+    const storageDir = storageBaseDir();
+    if (!fs.existsSync(storageDir)) {
+        console.warn('⚠️ Proof challenge — storage directory does not exist');
+        return;
+    }
+
+    // Collect all chunk bytes across all stored files (sorted by fileId/chunkIndex for determinism)
+    const chunkBuffers: Buffer[] = [];
+    try {
+        const fileDirs = fs.readdirSync(storageDir).sort();
+        for (const fid of fileDirs) {
+            const fileDir = path.join(storageDir, fid);
+            if (!fs.statSync(fileDir).isDirectory()) continue;
+            const chunks = fs.readdirSync(fileDir)
+                .filter(f => f.endsWith('.bin'))
+                .sort((a, b) => parseInt(a) - parseInt(b));
+            for (const chunk of chunks) {
+                chunkBuffers.push(fs.readFileSync(path.join(fileDir, chunk)));
+            }
+        }
+    } catch (err: unknown) {
+        console.error(`❌ Proof challenge — failed to read chunks: ${(err as Error).message}`);
+        return;
+    }
+
+    // sha256(chunk_0_bytes || chunk_1_bytes || ... || nonce_bytes)
+    const hasher = crypto.createHash('sha256');
+    for (const buf of chunkBuffers) {
+        hasher.update(buf);
+    }
+    hasher.update(Buffer.from(nonce, 'hex'));
+    const hash = '0x' + hasher.digest('hex');
+
+    wsService.send(JSON.stringify({ type: 'proof_response', dealId, interval, hash }));
+    console.log(`📤 Proof response sent — interval: ${interval}  hash: ${hash.slice(0, 14)}…`);
+    onEvent('deal', { phase: 'proof_sent', dealId, interval });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

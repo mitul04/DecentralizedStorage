@@ -441,6 +441,7 @@
         <div class="nav-item active" onclick="switchTab('dashboard', event)">📊 Dashboard</div>
         <div class="nav-item" onclick="switchTab('wallet', event)">💰 Wallet</div>
         <div class="nav-item" onclick="switchTab('profile', event)">👤 Profile</div>
+        <div class="nav-item" onclick="switchTab('deals', event)">📋 Deals</div>
         <div class="nav-item" onclick="switchTab('settings', event)">⚙️ Settings</div>
     </nav>
 
@@ -661,6 +662,63 @@
                         🚪 Logout from DeCloud
                     </button>
                 </div>
+
+                <!-- DCLD Spending Approval -->
+                <div class="card" style="margin-top: 16px;">
+                    <div class="card-label" style="margin-bottom: 8px;">DCLD Token Approval</div>
+                    <p style="color: var(--text-light); font-size: 13px; margin-bottom: 16px; line-height: 1.5;">
+                        The StorageEscrow contract needs approval to move DCLD tokens on your behalf when a deal is executed.
+                        This must be done at least once before you can participate in storage deals.
+                    </p>
+                    <button class="btn-primary" id="btn-approve-dcld" onclick="doApproveDcld()"
+                        style="max-width: 260px;">
+                        ✅ Approve DCLD Spending
+                    </button>
+                    <div id="approve-dcld-result" class="feedback-msg" style="margin-top: 12px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ DEALS ═══ -->
+        <div id="view-deals" style="display: none;">
+            <div class="header-row">
+                <h2>Deals &amp; Contracts</h2>
+            </div>
+
+            <!-- Auto-sign toggle -->
+            <div class="card" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-weight: 600; font-size: 14px;">Auto-sign deals</div>
+                    <div style="font-size: 12px; color: var(--text-light); margin-top: 2px;">
+                        Automatically sign storage deals when they arrive
+                    </div>
+                </div>
+                <label style="position: relative; display: inline-block; width: 48px; height: 26px; flex-shrink: 0;">
+                    <input type="checkbox" id="toggle-auto-sign" style="opacity:0;width:0;height:0;"
+                        onchange="onAutoSignToggle(this.checked)">
+                    <span id="toggle-slider" style="
+                        position: absolute; cursor: pointer; inset: 0;
+                        background: #ccc; border-radius: 26px; transition: .3s;
+                    "></span>
+                </label>
+            </div>
+
+            <!-- Pending approval section -->
+            <div id="deals-pending-header" style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+                color: var(--text-light); text-transform: uppercase; margin-bottom: 8px; display: none;">
+                Pending Approval
+            </div>
+            <div id="deals-pending-list"></div>
+
+            <!-- Recent deals section -->
+            <div id="deals-recent-header" style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+                color: var(--text-light); text-transform: uppercase; margin: 16px 0 8px; display: none;">
+                Recent
+            </div>
+            <div id="deals-recent-list"></div>
+
+            <div id="deals-empty" style="color: var(--text-light); font-size: 14px; text-align: center; padding: 40px 0;">
+                No deals yet. Storage deals will appear here when peers upload files.
             </div>
         </div>
 
@@ -726,7 +784,7 @@
 
         // ─── Navigation ───────────────────────────────────────────────────────
         function switchTab(tabName, evt) {
-            ['dashboard', 'wallet', 'profile', 'settings'].forEach(view => {
+            ['dashboard', 'wallet', 'profile', 'deals', 'settings'].forEach(view => {
                 const el = document.getElementById(`view-${view}`);
                 if (el) el.style.display = 'none';
             });
@@ -734,6 +792,7 @@
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
             if (tabName === 'settings') loadSettings();
+            if (tabName === 'deals') loadDealsTab();
         }
 
         // ─── Wallet tab: Create ───────────────────────────────────────────────
@@ -910,11 +969,222 @@
             }
         }
 
+        // ─── DCLD Approval ────────────────────────────────────────────────────
+        async function doApproveDcld() {
+            const btn = document.getElementById('btn-approve-dcld');
+            const result = document.getElementById('approve-dcld-result');
+            btn.innerText = '⏳ Approving...';
+            btn.disabled = true;
+            result.className = 'feedback-msg';
+            result.innerText = '';
+            try {
+                const res = await ipcRenderer.invoke('approve-dcld-escrow');
+                result.className = 'feedback-msg feedback-success';
+                result.innerText = `✅ Approved! Tx: ${res.txHash}`;
+            } catch (err) {
+                result.className = 'feedback-msg feedback-error';
+                result.innerText = `❌ ${err.message}`;
+            } finally {
+                btn.innerText = '✅ Approve DCLD Spending';
+                btn.disabled = false;
+            }
+        }
+
         // ─── Balance Refresh ──────────────────────────────────────────────────
         function refreshBalance() {
             document.getElementById('wallet-refresh-btn').innerText = '⏳ Updating...';
             ipcRenderer.send('refresh-balance');
         }
+
+        // ─── Deals ────────────────────────────────────────────────────────────
+
+        const _recentDeals = []; // { dealId, phase, timestamp }
+        const _countdowns  = {}; // dealId → intervalId
+
+        async function loadDealsTab() {
+            try {
+                const { autoSign } = await ipcRenderer.invoke('get-deal-settings');
+                const cb = document.getElementById('toggle-auto-sign');
+                cb.checked = autoSign;
+                const slider = document.getElementById('toggle-slider');
+                slider.style.background = autoSign ? 'var(--primary)' : '#ccc';
+            } catch (e) { console.error('get-deal-settings failed:', e); }
+
+            try {
+                const pending = await ipcRenderer.invoke('get-pending-deals');
+                renderPendingDeals(pending);
+            } catch (e) { console.error('get-pending-deals failed:', e); }
+
+            renderRecentDeals();
+        }
+
+        async function onAutoSignToggle(value) {
+            const slider = document.getElementById('toggle-slider');
+            slider.style.background = value ? 'var(--primary)' : '#ccc';
+            try {
+                await ipcRenderer.invoke('save-deal-settings', { autoSign: value });
+            } catch (e) { console.error('save-deal-settings failed:', e); }
+        }
+
+        function renderPendingDeals(pendingList) {
+            const container = document.getElementById('deals-pending-list');
+            const header    = document.getElementById('deals-pending-header');
+            container.innerHTML = '';
+            // Clear old countdowns
+            Object.keys(_countdowns).forEach(id => clearInterval(_countdowns[id]));
+
+            if (!pendingList || pendingList.length === 0) {
+                header.style.display = 'none';
+                updateEmptyState();
+                return;
+            }
+            header.style.display = 'block';
+            document.getElementById('deals-empty').style.display = 'none';
+
+            pendingList.forEach(deal => {
+                container.appendChild(buildPendingCard(deal));
+                startCountdown(deal.dealId, deal.expiresAt);
+            });
+        }
+
+        function buildPendingCard(deal) {
+            const d = deal.dealData || {};
+            const sizeBytes   = parseInt(d.sizeBytes || '0', 10);
+            const sizeLabel   = formatBytes(sizeBytes);
+            const durationBlocks = parseInt(d.durationBlocks || '0', 10);
+            const durationDays = Math.round(durationBlocks * 12 / 86400);
+            const priceWei    = BigInt(d.priceWei || '0');
+            const escrowWei   = BigInt(d.peerEscrowWei || '0');
+            const priceDcld   = Number(priceWei) / 1e18;
+            const escrowDcld  = Number(escrowWei) / 1e18;
+            const shortId     = deal.dealId ? deal.dealId.slice(2, 10) : '???';
+
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.id = `deal-card-${deal.dealId}`;
+            card.style.marginBottom = '12px';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-weight:700; font-size:14px;">Deal 0x${shortId}…</span>
+                    <span id="countdown-${deal.dealId}" style="font-size:12px; color: #F59E0B; font-weight:600;"></span>
+                </div>
+                <div style="font-size:12px; color:var(--text-light); margin-bottom:4px;">
+                    Size: ${sizeLabel} &nbsp;·&nbsp; Duration: ~${durationDays} days
+                </div>
+                <div style="font-size:12px; margin-bottom:2px;">
+                    Price: <strong>${priceDcld.toFixed(6)} DCLD</strong>
+                </div>
+                <div style="font-size:12px; color:#60A5FA; margin-bottom:12px;">
+                    Your escrow: ${escrowDcld.toFixed(6)} DCLD
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-secondary" style="flex:1; border-color:#EF4444; color:#EF4444;"
+                        onclick="doRejectDeal('${deal.dealId}')">Reject</button>
+                    <button class="btn-primary" style="flex:1;"
+                        onclick="doApproveDeal('${deal.dealId}')">Approve</button>
+                </div>
+            `;
+            return card;
+        }
+
+        function startCountdown(dealId, expiresAt) {
+            function tick() {
+                const el = document.getElementById(`countdown-${dealId}`);
+                if (!el) { clearInterval(_countdowns[dealId]); return; }
+                const secsLeft = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+                const m = Math.floor(secsLeft / 60);
+                const s = secsLeft % 60;
+                el.textContent = `⏱ ${m}:${String(s).padStart(2, '0')} left`;
+                if (secsLeft === 0) clearInterval(_countdowns[dealId]);
+            }
+            tick();
+            _countdowns[dealId] = setInterval(tick, 1000);
+        }
+
+        async function doApproveDeal(dealId) {
+            const card = document.getElementById(`deal-card-${dealId}`);
+            if (card) card.style.opacity = '0.5';
+            try {
+                await ipcRenderer.invoke('approve-deal', dealId);
+                addRecentDeal(dealId, 'signed');
+                if (card) card.remove();
+                updateEmptyState();
+            } catch (e) {
+                if (card) card.style.opacity = '1';
+                alert(`Approve failed: ${e.message}`);
+            }
+        }
+
+        async function doRejectDeal(dealId) {
+            await ipcRenderer.invoke('reject-deal', dealId);
+            const card = document.getElementById(`deal-card-${dealId}`);
+            if (card) card.remove();
+            addRecentDeal(dealId, 'rejected');
+            updateEmptyState();
+        }
+
+        function addRecentDeal(dealId, phase) {
+            _recentDeals.unshift({ dealId, phase, timestamp: Date.now() });
+            if (_recentDeals.length > 20) _recentDeals.pop();
+            renderRecentDeals();
+        }
+
+        function renderRecentDeals() {
+            const container = document.getElementById('deals-recent-list');
+            const header    = document.getElementById('deals-recent-header');
+            if (_recentDeals.length === 0) { header.style.display = 'none'; container.innerHTML = ''; return; }
+            header.style.display = 'block';
+            container.innerHTML = _recentDeals.map(d => {
+                const shortId = d.dealId ? d.dealId.slice(2, 10) : '???';
+                const icon    = d.phase === 'signed' ? '✅' : d.phase === 'rejected' ? '❌' : '⏰';
+                const label   = d.phase === 'signed' ? 'Approved' : d.phase === 'rejected' ? 'Rejected' : 'Expired';
+                const ago     = Math.round((Date.now() - d.timestamp) / 60000);
+                const agoLabel = ago < 1 ? 'just now' : `${ago}m ago`;
+                return `<div style="display:flex; justify-content:space-between; align-items:center;
+                    padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size:13px;">
+                    <span>${icon} Deal 0x${shortId}… <span style="color:var(--text-light)">${label}</span></span>
+                    <span style="font-size:11px; color:var(--text-light);">${agoLabel}</span>
+                </div>`;
+            }).join('');
+            updateEmptyState();
+        }
+
+        function updateEmptyState() {
+            const hasPending = document.getElementById('deals-pending-list').children.length > 0;
+            const hasRecent  = _recentDeals.length > 0;
+            document.getElementById('deals-empty').style.display =
+                (hasPending || hasRecent) ? 'none' : 'block';
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        }
+
+        // Listen for real-time deal events from main process
+        ipcRenderer.on('peer:deal', (_event, data) => {
+            if (data.phase === 'pending_approval') {
+                const pending = [{ dealId: data.dealId, dealData: data.dealData, expiresAt: data.expiresAt }];
+                // Append to existing pending cards if deals tab is open
+                const container = document.getElementById('deals-pending-list');
+                const header    = document.getElementById('deals-pending-header');
+                if (container) {
+                    header.style.display = 'block';
+                    document.getElementById('deals-empty').style.display = 'none';
+                    const card = buildPendingCard(pending[0]);
+                    container.appendChild(card);
+                    startCountdown(data.dealId, data.expiresAt);
+                }
+            } else if (data.phase === 'signed') {
+                const card = document.getElementById(`deal-card-${data.dealId}`);
+                if (card) { card.remove(); addRecentDeal(data.dealId, 'signed'); }
+            } else if (data.phase === 'expired' || data.phase === 'rejected') {
+                const card = document.getElementById(`deal-card-${data.dealId}`);
+                if (card) { card.remove(); addRecentDeal(data.dealId, data.phase); }
+            }
+        });
 
         // ─── Settings ─────────────────────────────────────────────────────────
         async function loadSettings() {
@@ -1136,6 +1406,22 @@
             const entry = document.createElement('div');
             entry.className = 'log-entry';
             entry.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span> 📦 Chunk assignment — fileId: <span style="color:#60A5FA;font-family:monospace">${fileId.slice(0, 8)}…</span> chunks: [${chunkIndexes}]`;
+            logs.prepend(entry);
+        });
+
+        ipcRenderer.on('peer:download', (event, data) => {
+            const { phase, fileId, chunkIndex, error } = data;
+            const logs = document.getElementById('console-logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const fid = `<span style="color:#60A5FA;font-family:monospace">${fileId.slice(0, 8)}…</span>`;
+            const messages = {
+                requested:  `📤 Download request — fileId: ${fid}  chunk: ${chunkIndex}`,
+                streaming:  `🔗 Streaming chunk ${chunkIndex} → client  fileId: ${fid}`,
+                complete:   `✅ Chunk ${chunkIndex} served  fileId: ${fid}`,
+                failed:     `❌ Download failed — chunk: ${chunkIndex}  fileId: ${fid}  ${error ?? ''}`,
+            };
+            entry.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString()}</span> ${messages[phase] ?? phase}`;
             logs.prepend(entry);
         });
 

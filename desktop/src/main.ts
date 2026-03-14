@@ -170,12 +170,35 @@ function startHeartbeat(address: string): void {
 function onAuthSuccess(): void {
     sendToUI('auth-success');
     wsService.start();
+    ensureDcldApproval().catch(err =>
+        console.warn('⚠️ DCLD approval check failed:', err?.message ?? err)
+    );
+}
+
+// Approve the StorageEscrow contract to spend DCLD on behalf of this peer.
+// Called automatically after auth — peer must have sufficient allowance to participate in deals.
+async function ensureDcldApproval(): Promise<void> {
+    const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS ?? ethService.ESCROW_CONTRACT_ADDR;
+    if (!wallet) return;
+
+    const provider = ethService.createProvider();
+    const signer   = wallet.connect(provider);
+
+    const tokenAbi = ['function approve(address spender, uint256 amount) returns (bool)'];
+    const token = new ethers.Contract(ethService.DCLD_TOKEN_ADDR, tokenAbi, signer);
+
+    console.log(`⚠️ Approving DCLD escrow spending (MaxUint256)…`);
+    const tx = await (token as any).approve(escrowAddress, ethers.MaxUint256, { gasLimit: 100_000 });
+    await tx.wait(1);
+    console.log(`✅ DCLD approved for escrow. tx: ${tx.hash}`);
+    sendToUI('peer:approval', { status: 'approved', txHash: tx.hash });
 }
 
 // ─── Core wallet init (called after create/import/auto-load) ─────────────────
 
 async function initWallet(loadedWallet: ethers.HDNodeWallet | ethers.Wallet): Promise<void> {
     wallet = loadedWallet;
+    authService.setWallet(wallet); // expose to chunkService for deal signing
     console.log(`✅ Wallet ready: ${wallet.address}`);
 
     // Try auto-login on startup (non-fatal — renderer shows login/register choice on failure)
@@ -306,6 +329,48 @@ ipcMain.handle('save-settings', (_event, data: { apiBaseUrl: string; relayBaseUr
 ipcMain.handle('get-storage-stats', () => chunkService.getStorageStats());
 ipcMain.handle('get-assignments', () => chunkService.getAssignments());
 
+// ─── IPC: Deal management ─────────────────────────────────────────────────────
+
+ipcMain.handle('get-deal-settings', () => ({
+    autoSign: authService.getPeerDealAutoSign(),
+}));
+
+ipcMain.handle('save-deal-settings', (_event, data: { autoSign: boolean }) => {
+    authService.setPeerDealAutoSign(data.autoSign);
+    return { ok: true };
+});
+
+ipcMain.handle('get-pending-deals', () => chunkService.getPendingDeals());
+
+ipcMain.handle('approve-deal', async (_event, dealId: string) => {
+    await chunkService.approveDeal(dealId);
+    return { ok: true };
+});
+
+ipcMain.handle('reject-deal', (_event, dealId: string) => {
+    chunkService.rejectDeal(dealId);
+    return { ok: true };
+});
+
+// ─── IPC: DCLD approval ──────────────────────────────────────────────────────
+
+ipcMain.handle('approve-dcld-escrow', async () => {
+    const escrowAddress = process.env.ESCROW_CONTRACT_ADDRESS ?? ethService.ESCROW_CONTRACT_ADDR;
+    if (!wallet) throw new Error('No wallet connected');
+
+    const provider = ethService.createProvider();
+    const signer   = wallet.connect(provider);
+
+    const tokenAbi = ['function approve(address spender, uint256 amount) returns (bool)'];
+    const token = new ethers.Contract(ethService.DCLD_TOKEN_ADDR, tokenAbi, signer);
+
+    const tx = await (token as any).approve(escrowAddress, ethers.MaxUint256, { gasLimit: 100_000 });
+    await tx.wait(1);
+    console.log(`✅ DCLD manually approved for escrow. tx: ${tx.hash}`);
+    sendToUI('peer:approval', { status: 'approved', txHash: tx.hash });
+    return { status: 'approved', txHash: tx.hash };
+});
+
 // ─── IPC: Balance refresh ────────────────────────────────────────────────────
 
 ipcMain.on('refresh-balance', () => {
@@ -401,6 +466,8 @@ app.whenReady().then(() => {
     chunkService.init((event, data) => {
         if (event === 'assignment') sendToUI('peer:assignment', data);
         if (event === 'storage-update') sendToUI('peer:storage', data);
+        if (event === 'download') sendToUI('peer:download', data);
+        if (event === 'deal') sendToUI('peer:deal', data);
     });
 
     // Initialise WebSocket service before any window or auth flow

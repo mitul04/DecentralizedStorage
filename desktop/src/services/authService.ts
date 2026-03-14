@@ -9,6 +9,7 @@ interface SettingsSchema {
     relayBaseUrl: string;
     storageBaseDir: string;
     token: string;
+    peerDealAutoSign: boolean;
 }
 
 const settingsStore = new Store<SettingsSchema>({ name: 'settings' });
@@ -41,6 +42,26 @@ export function getStorageBaseDir(): string {
 
 export function setStorageBaseDir(dir: string): void {
     settingsStore.set('storageBaseDir', dir);
+}
+
+export function getPeerDealAutoSign(): boolean {
+    return settingsStore.has('peerDealAutoSign') ? settingsStore.get('peerDealAutoSign') : true;
+}
+
+export function setPeerDealAutoSign(value: boolean): void {
+    settingsStore.set('peerDealAutoSign', value);
+}
+
+// ─── Wallet (held in memory for deal signing) ────────────────────────────────
+
+let _wallet: ethers.HDNodeWallet | ethers.Wallet | null = null;
+
+export function setWallet(w: ethers.HDNodeWallet | ethers.Wallet): void {
+    _wallet = w;
+}
+
+export function getWallet(): ethers.HDNodeWallet | ethers.Wallet | null {
+    return _wallet;
 }
 
 // ─── Token ────────────────────────────────────────────────────────────────────

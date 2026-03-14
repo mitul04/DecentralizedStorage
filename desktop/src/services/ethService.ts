@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
 
 export const SEPOLIA_RPC = 'https://sepolia.infura.io/v3/eaea60d233f64893b5926f90422b7b78';
-export const DCLD_TOKEN_ADDR = '0x1702e56a169517e8EFf510DFBF2579Cf1d94621A';
+export const DCLD_TOKEN_ADDR = '0xB157028062Dc78D8e0Ec1A14F7a5a09D6c75249F';
+export const ESCROW_CONTRACT_ADDR = '0xBd1550ccb0388F88Ef943c0196F439e0586194b3';
 
 const ERC20_ABI = [
     'function balanceOf(address owner) view returns (uint256)',
