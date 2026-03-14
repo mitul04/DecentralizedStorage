@@ -84,8 +84,15 @@ async function pushBalances(): Promise<void> {
             dcld: parseFloat(dcldBal).toFixed(4),
             isRegistered,
         });
-    } catch (err) {
+    } catch (err: any) {
         console.error('❌ Balance fetch failed:', err);
+        const msg: string = err?.message ?? '';
+        let reason = 'Unknown error.';
+        if (msg.includes('network') || msg.includes('NETWORK_ERROR') || msg.includes('timeout'))
+            reason = 'Network error — check your internet connection.';
+        else if (msg)
+            reason = msg;
+        sendToUI('balance-refresh-failed', { reason });
     }
 }
 

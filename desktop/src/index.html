@@ -994,8 +994,13 @@
 
         // ─── Balance Refresh ──────────────────────────────────────────────────
         function refreshBalance() {
-            document.getElementById('wallet-refresh-btn').innerText = '⏳ Updating...';
+            const btn = document.getElementById('wallet-refresh-btn');
+            btn.innerText = '⏳ Updating...';
             ipcRenderer.send('refresh-balance');
+        }
+
+        function resetRefreshBtn() {
+            document.getElementById('wallet-refresh-btn').innerText = '🔄 Refresh';
         }
 
         // ─── Deals ────────────────────────────────────────────────────────────
@@ -1308,9 +1313,27 @@
         ipcRenderer.on('wallet-connected', (event, data) => {
             _walletData = data;
             updateProfileState();
+            resetRefreshBtn();
 
             if (_mnemonicPending) return; // keep backup screen visible
             showWalletConnected(data);
+        });
+
+        ipcRenderer.on('balance-refresh-failed', (event, { reason }) => {
+            resetRefreshBtn();
+            const btn = document.getElementById('wallet-refresh-btn');
+            btn.title = `Failed to refresh: ${reason}`;
+            // show inline error under balances
+            const existing = document.getElementById('balance-refresh-error');
+            const el = existing ?? document.createElement('div');
+            el.id = 'balance-refresh-error';
+            el.style.cssText = 'color:#EF4444;font-size:12px;margin-top:6px;';
+            el.innerText = `Failed to refresh balances: ${reason}`;
+            if (!existing) {
+                const ethRow = document.getElementById('wallet-eth')?.closest('.card-row') ?? document.getElementById('wallet-eth')?.parentElement;
+                ethRow?.parentElement?.appendChild(el);
+            }
+            setTimeout(() => el.remove(), 6000);
         });
 
         ipcRenderer.on('auth-success', () => {
