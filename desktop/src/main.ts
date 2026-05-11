@@ -361,6 +361,12 @@ ipcMain.handle('reject-deal', (_event, dealId: string) => {
 
 // ─── IPC: DCLD approval ──────────────────────────────────────────────────────
 
+ipcMain.handle('get-transactions', async () => {
+    if (!wallet) throw new Error('No wallet loaded.');
+    const provider = ethService.createProvider();
+    return ethService.getRecentTransfers(wallet.address, provider);
+});
+
 ipcMain.handle('approve-dcld-escrow', async () => {
     if (!wallet) throw new Error('No wallet loaded — restart the app and try again.');
 

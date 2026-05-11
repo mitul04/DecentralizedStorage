@@ -566,15 +566,12 @@
                 <div class="table-container">
                     <div class="table-row table-head">
                         <div>Date</div>
-                        <div>Activity</div>
+                        <div>Type</div>
                         <div>Amount</div>
-                        <div>Status</div>
+                        <div>Tx Hash</div>
                     </div>
-                    <div class="table-row">
-                        <div>2026-02-10</div>
-                        <div>Storage Rent</div>
-                        <div style="color: var(--success);">+ 10.00 DCLD</div>
-                        <div>✅ Completed</div>
+                    <div id="tx-table-body">
+                        <div style="padding:16px;color:var(--text-light);font-size:13px;">Loading transactions...</div>
                     </div>
                 </div>
             </div>
@@ -891,8 +888,38 @@
             document.getElementById('wallet-eth').innerText = data.eth;
             document.getElementById('wallet-dcld').innerText = data.dcld;
 
-            // Sync registration state on settings tab
             applyRegistrationState(data.isRegistered);
+            loadTransactions(data.address);
+        }
+
+        async function loadTransactions(myAddress) {
+            const body = document.getElementById('tx-table-body');
+            body.innerHTML = '<div style="padding:16px;color:var(--text-light);font-size:13px;">Loading transactions...</div>';
+            try {
+                const txs = await ipcRenderer.invoke('get-transactions');
+                if (!txs || txs.length === 0) {
+                    body.innerHTML = '<div style="padding:16px;color:var(--text-light);font-size:13px;">No DCLD transactions found.</div>';
+                    return;
+                }
+                body.innerHTML = txs.map(tx => {
+                    const incoming = tx.to.toLowerCase() === myAddress.toLowerCase();
+                    const date = tx.timestamp
+                        ? new Date(tx.timestamp * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : `Block #${tx.blockNumber}`;
+                    const amount = parseFloat(tx.amount).toFixed(4);
+                    const shortHash = tx.txHash ? tx.txHash.slice(0, 8) + '…' + tx.txHash.slice(-6) : '—';
+                    const color = incoming ? 'var(--success)' : '#EF4444';
+                    const sign  = incoming ? '+' : '-';
+                    return `<div class="table-row">
+                        <div>${date}</div>
+                        <div>${incoming ? 'Received' : 'Sent'}</div>
+                        <div style="color:${color};font-weight:600;">${sign}${amount} DCLD</div>
+                        <div style="font-family:monospace;font-size:12px;">${shortHash}</div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = `<div style="padding:16px;color:#EF4444;font-size:13px;">Failed to load transactions: ${e.message}</div>`;
+            }
         }
 
         // ─── Profile tab state ────────────────────────────────────────────────
